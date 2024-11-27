@@ -43,6 +43,8 @@ We can see that there are some columns that have many NA values, we will use a b
 
 ## 2.1 NA Values
 
+barplot(colMeans(is.na(training)), las=2)
+
 ```{r}
 # Plotting a barplot with the number of NA values
 barplot(colMeans(is.na(training)), las=2)
@@ -82,3 +84,70 @@ nrow(training %>% filter(if_any(everything(), is.na)))
 ```
 
 We can see that 877 observations have NA values, therefore we will now concentrate on replacing the missing values, taking into account their importance and if the missing variable is categorical or not.
+
+To solve missing NA values we will separate the dataset into both numerical and categorical variables, work with both split datasets and then after dealing with the missing values we will merge them.
+
+```{r}
+# Separating our dataset into both numerical and categorical data
+numeric_data <- select_if(training, is.numeric)
+categorical_data <- select_if(training, is.character)
+```
+
+We will start working with numerical data as it will be a little bit easier, firstly we will have a look at the different columns
+
+```{r}
+skim(numeric_data)
+```
+
+We can see that only 3 variables contain missing values, these are LotFrontage containing 259 missing values, MasVnrArea with 8 and finally GarageYrBlt with 81 values.
+
+About 82% of the observations have a value for LotFrontage which is the variable with more NA values, this is a high completion rate and therefore we will not remove it.
+
+To solve this missing value we will use imputation by the median .
+
+```{r}
+# Replace NA values with the median of each column
+numeric_data <- numeric_data %>%
+  mutate(across(everything(), ~ ifelse(is.na(.), median(., na.rm = TRUE), .)))
+
+# Number of rows with NA values 
+nrow(numeric_data %>% filter(if_any(everything(), is.na)))
+```
+
+Now that the NA values are solved for numeric data, we will have to check for categorical data.
+
+```{r}
+skim(categorical_data)
+```
+
+The variables with missing values are MasVnrType, all the variables referring to Bsmt which refers to the basement, one NA value in electrical. Garage variables also have NA values. FirePlaceQu is the variable with most missing values.
+
+As for MasVnrType there are only 8 missing values we will do imputation by the mode. Electrical follows the same explanation and we will use imputation by the mode.
+
+Some of the NA values in the basement, garage and fire place qu refer to that the house has none of these elements, therefore we will change the NA values from NA to None. We might use this variables later with encoding to obtain a better analysis and prediction.
+
+```{r}
+# Choosing the columns to change from NA to None
+na_columns <- c("BsmtQual", "BsmtCond", "BsmtExposure", "BsmtFinType1","BsmtFinType2", "FireplaceQu", "GarageType", "GarageFinish", "GarageQual","GarageCond")
+
+
+categorical_data[na_columns][is.na(categorical_data[na_columns])] <- "None" 
+```
+
+Now we will do imputation by the mode for the remaining variables
+
+```{r}
+# Replace NA values with the mode of each column
+table(categorical_data$MasVnrType)
+
+#categorical_data[categorical_data$MasVnrType][is.na(categorical_data[na_columns$MasVnrType])] <- which.max(table)
+
+# Number of rows with NA values 
+nrow(categorical_data %>% filter(if_any(everything(), is.na)))
+
+```
+
+```{r}
+# Combining both datasets
+data <- cbind(numeric_data, categorical_data)
+```
