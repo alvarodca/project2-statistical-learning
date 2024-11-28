@@ -13,7 +13,7 @@ rm(list = ls())
 set.seed(123)
 
 # List of required libraries
-required_libraries <- c("skimr", "ggplot2","dplyr", "VIM")
+required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer")
 
 # Install and load libraries
 for (lib in required_libraries) {
@@ -37,13 +37,11 @@ skim(training)
 
 With a first visualization of the dataset we can see that 43 of the columns are categorical while 38 of them are numerical.
 
-# 2.Data Preprocessing
+# 2. Data Preprocessing
 
 We can see that there are some columns that have many NA values, we will use a barplot to visualize this better and decide whether we should remove columns or not.
 
 ## 2.1 NA Values
-
-barplot(colMeans(is.na(training)), las=2)
 
 ```{r}
 # Plotting a barplot with the number of NA values
@@ -59,7 +57,7 @@ colnames(training)[which(colMeans(is.na(training))>0.75)]
 
 These columns are Alley, FirePlaceQu, PoolQC, Fence and MiscFeature
 
-Alley refers to the type of alley access to the property. It can be Gravel or Paved, NA means no alley, almost all houses have an NA value here, we don't think that the type of alley is of great importance we will remove it
+Alley refers to the type of alley access to the property. It can be Gravel or Paved, NA means no alley, almost all houses have an NA value here, we don't think that the type of alley is of great importance, so we will remove it.
 
 PoolQC refers to the quality of the swimming pool, as most houses don't have a pool and there are other variables such as PoolArea which refers to the dimension of the swimming pool, we will remove it.
 
@@ -75,8 +73,6 @@ training <- training %>% select(-all_of(na_columns))
 # Obtaining the remaining number of NA values
 ncol(training %>% filter(if_any(everything(), is.na)))
 ```
-
-There are still
 
 ```{r}
 # Obtaining the remaining number of NA values
@@ -120,11 +116,11 @@ Now that the NA values are solved for numeric data, we will have to check for ca
 skim(categorical_data)
 ```
 
-The variables with missing values are MasVnrType, all the variables referring to Bsmt which refers to the basement, one NA value in electrical. Garage variables also have NA values. FirePlaceQu is the variable with most missing values.
+The variables with missing values are MasVnrType, all the variables referring to Bsmt which refers to the basement, one NA value in Electrical. Garage variables also have NA values. FirePlaceQu is the variable with most missing values.
 
-As for MasVnrType there are only 8 missing values , Electrical has only one missing value. Due to this we will use KNN to find the most similar points to our missing value and then imputing it its most similar value.
+As for MasVnrType there are only 8 missing values , Electrical has only one missing value. Due to this we will use KNN to find the most similar points to our missing value and then imputing its most similar value.
 
-Some of the NA values in the basement, garage and fire place qu refer to that the house has none of these elements, therefore we will change the NA values from NA to None. We might use this variables later with encoding to obtain a better analysis and prediction.
+Some of the NA values in the basement, garage and FirePlaceQu refer to that the house has none of these elements, therefore we will change the NA values from NA to None. We might use this variables later with encoding to obtain a better analysis and prediction.
 
 ```{r}
 # Choosing the columns to change from NA to None
@@ -138,7 +134,8 @@ Applying KNN to do the imputation.
 
 ```{r}
 # Replace NA values with the mode of each column
-imputed_categorical_data <- kNN(categorical_data,
+
+imputed_categorical_data <- VIM::kNN(categorical_data,
                                 variable = c("MasVnrType","Electrical"),
                                 k = 10)
 
@@ -175,7 +172,7 @@ for (col_name in names(numeric_data)) {
 ```
 
 ```{r}
-for (var in categorical_data) {
+for (var in names(categorical_data)) {
   print(ggplot(categorical_data, aes_string(x = var)) + 
           geom_bar(fill = "orange") + 
           ggtitle(paste("Bar Plot of", var)))
@@ -189,5 +186,59 @@ library(DataExplorer)
 
 # Generate an automatic report with all plots
 create_report(data)
+
+```
+
+```{r}
+# Apply DBSCAN
+scaled_num_data <- as.data.frame(scale(numeric_data))
+
+# Calculate k-distances (e.g., 4th nearest neighbor)
+kNNdistplot(scaled_num_data, k = 4)
+abline(h = 6, col = "red", lty = 2)  # Choose the threshold for eps
+```
+
+```{r}
+
+
+model <- dbscan(scaled_num_data, eps = 6, minPts = 4)
+
+pca <- prcomp(scaled_num_data, center = TRUE)
+
+# Get the first two principal components
+pca_data <- as.data.frame(pca$x)  # The principal components scores
+
+# Add cluster labels to the PCA data
+pca_data$cluster <- as.factor(model$cluster)
+
+# Plot Clusters
+ggplot(pca_data, aes(x = PC1, y = PC2, color = cluster)) +
+  geom_point(size = 3, alpha = 0.7) +
+  scale_color_manual(values = c("red", RColorBrewer::brewer.pal(8, "Set2"))) +
+  labs(title = "DBSCAN Clustering with Outliers",
+       subtitle = "Red points indicate outliers (cluster 0)",
+       color = "Cluster") +
+  theme_minimal()
+
+sum(pca_data$cluster == 0)
+
+# Identify Outliers
+# outliers <- data[model$cluster == 0, ]
+# cleaned_data <- data[model$cluster != 0, ]
+```
+
+```{r}
+# You may need to install devtools to install this package
+#install.packages("devtools")
+#devtools::install_github("twitter/AnomalyDetection")
+
+# Load the AnomalyDetection package
+library(AnomalyDetection)
+
+# Example for time series anomaly detection
+result <- AnomalyDetectionVec(scaled_num_data$SalePrice, max_anoms = 0.1, direction = 'both', plot = TRUE)
+
+# View the identified anomalies
+print(result$anoms)
 
 ```
