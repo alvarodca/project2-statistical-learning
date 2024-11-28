@@ -13,7 +13,7 @@ rm(list = ls())
 set.seed(123)
 
 # List of required libraries
-required_libraries <- c("skimr", "ggplot2","dplyr")
+required_libraries <- c("skimr", "ggplot2","dplyr", "VIM")
 
 # Install and load libraries
 for (lib in required_libraries) {
@@ -24,7 +24,7 @@ for (lib in required_libraries) {
 }
 ```
 
-We will start obtaining the datasets and interpreting what we have as well as making some decision which could be useful for our future analysis. We can see that both training and test datasets are already separated, they have different dimensionality as the training set has the target variable, therefore we cannot merge them. As the total dataset would have around 3000 observations a 50% separation of the total dataset for training and test seems fairly good.
+We will start obtaining the datasets and interpreting what we have as well as making some decision which could be useful for our future analysis.
 
 ```{r}
 training <- read.csv("train.csv", sep = ",")
@@ -122,7 +122,7 @@ skim(categorical_data)
 
 The variables with missing values are MasVnrType, all the variables referring to Bsmt which refers to the basement, one NA value in electrical. Garage variables also have NA values. FirePlaceQu is the variable with most missing values.
 
-As for MasVnrType there are only 8 missing values we will do imputation by the mode. Electrical follows the same explanation and we will use imputation by the mode.
+As for MasVnrType there are only 8 missing values , Electrical has only one missing value. Due to this we will use KNN to find the most similar points to our missing value and then imputing it its most similar value.
 
 Some of the NA values in the basement, garage and fire place qu refer to that the house has none of these elements, therefore we will change the NA values from NA to None. We might use this variables later with encoding to obtain a better analysis and prediction.
 
@@ -134,13 +134,18 @@ na_columns <- c("BsmtQual", "BsmtCond", "BsmtExposure", "BsmtFinType1","BsmtFinT
 categorical_data[na_columns][is.na(categorical_data[na_columns])] <- "None" 
 ```
 
-Now we will do imputation by the mode for the remaining variables
+Applying KNN to do the imputation.
 
 ```{r}
 # Replace NA values with the mode of each column
-table(categorical_data$MasVnrType)
+imputed_categorical_data <- kNN(categorical_data,
+                                variable = c("MasVnrType","Electrical"),
+                                k = 10)
 
-#categorical_data[categorical_data$MasVnrType][is.na(categorical_data[na_columns$MasVnrType])] <- which.max(table)
+# KNN creates a new dataset with extra columns which indicate the rows that have been changed, therefore we will have to change the imputed rows for our original rows
+
+categorical_data$MasVnrType <- imputed_categorical_data$MasVnrType
+categorical_data$Electrical <- imputed_categorical_data$Electrical
 
 # Number of rows with NA values 
 nrow(categorical_data %>% filter(if_any(everything(), is.na)))
@@ -148,6 +153,41 @@ nrow(categorical_data %>% filter(if_any(everything(), is.na)))
 ```
 
 ```{r}
-# Combining both datasets
+# Combining both datasets and obtaining a general view of it
 data <- cbind(numeric_data, categorical_data)
+skim(data)
+```
+
+## 2.2 OUTLIERS
+
+We will now deal with potential outliers, to do this we will first visualize the distribution each of the variables follow separating both numerical and categorical data
+
+```{r}
+for (col_name in names(numeric_data)) {
+  hist(
+    numeric_data[[col_name]], 
+    main = paste("Histogram of", col_name), 
+    xlab = col_name, 
+    col = "skyblue", 
+    border = "white"
+  )
+}
+```
+
+```{r}
+for (var in categorical_data) {
+  print(ggplot(categorical_data, aes_string(x = var)) + 
+          geom_bar(fill = "orange") + 
+          ggtitle(paste("Bar Plot of", var)))
+}
+```
+
+```{r}
+# Install and load DataExplorer
+install.packages("DataExplorer")
+library(DataExplorer)
+
+# Generate an automatic report with all plots
+create_report(data)
+
 ```
