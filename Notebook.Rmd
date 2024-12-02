@@ -9,11 +9,11 @@ date: "2024-11-25"
 ```{r}
 rm(list = ls())
 
-# For reproducibility pourposes
+# For reproducibility purposes
 set.seed(123)
 
 # List of required libraries
-required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer")
+required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree","Rlof")
 
 # Install and load libraries
 for (lib in required_libraries) {
@@ -169,25 +169,10 @@ for (col_name in names(numeric_data)) {
     border = "white"
   )
 }
+  
 ```
 
-```{r}
-for (var in names(categorical_data)) {
-  print(ggplot(categorical_data, aes_string(x = var)) + 
-          geom_bar(fill = "orange") + 
-          ggtitle(paste("Bar Plot of", var)))
-}
-```
-
-```{r}
-# Install and load DataExplorer
-install.packages("DataExplorer")
-library(DataExplorer)
-
-# Generate an automatic report with all plots
-create_report(data)
-
-```
+Now we will use different outlier detection methods, we will then combine them to see potential outliers and remove this records.
 
 ```{r}
 # Apply DBSCAN
@@ -233,12 +218,61 @@ sum(pca_data$cluster == 0)
 #devtools::install_github("twitter/AnomalyDetection")
 
 # Load the AnomalyDetection package
-library(AnomalyDetection)
+#library(AnomalyDetection)
 
 # Example for time series anomaly detection
-result <- AnomalyDetectionVec(scaled_num_data$SalePrice, max_anoms = 0.1, direction = 'both', plot = TRUE)
+#result <- AnomalyDetectionVec(scaled_num_data$SalePrice, max_anoms = 0.1, direction = 'both', plot = TRUE)
 
 # View the identified anomalies
-print(result$anoms)
+#print(result$anoms)
+
+```
+
+Using an Isolation Forest model for outlier detection
+
+```{r}
+isolation_model <- isolation.forest(numeric_data, ndim = 1, ntrees = 100)
+# We could change both ndim and ntrees for different results, but these results are good
+
+outlier_score <- predict(isolation_model, numeric_data, type = "score")
+
+# Visualiing the different values
+hist(outlier_score, breaks = 20, main = "Distribution of Anomaly Scores")
+```
+
+We can see that most of the observations have a value between 0 and 0.5, according to this model a value of 0.5 is the boundary between outliers and the rest of points. Values closer to 1 are potential outliers. We can see that there is one observation far away from the rest while there are some observations between 0.52 and 0.6 which are few but could also be outliers.
+
+```{r}
+# Stablishing a threshold for the highest values
+threshold <- quantile(outlier_score, 0.99)
+outliers <- which(outlier_score >= threshold)
+print(unique(outliers)) # DEVUELVE EL MISMO VALOR DOS VECES, POR ESO UNIQUE
+
+```
+
+Using lof outlier detection model. LOF which stands for Local Outlier Factor. This model measures the local deviation of a point with respect to its neighbor. Points with a much lower density than its neighbor are considered to be outliers. The density of a point is considered to be how crowded or in other words if there are many neighbors around.
+
+The LOF compares the density of a point with its neighbors, a LOF higher than 1 indicates a point in a low density region in relation to its neighbors (potential outlier). A LOF value close to 1 indicates a point which is not an outlier. This is calculated using the reachability distance which is just the maximum of either the distance between two points and the distance of one point and the kth nearest neighbor.
+
+```{r}
+# Compute LOF scores
+k <- 20  # Number of neighbors
+lof_scores <- lof(numeric_data, k)
+
+# Identify outliers 
+threshold <- quantile(lof_scores, 0.99)
+outliers <- which(lof_scores > threshold)
+
+# View results
+print(outliers)
+
+```
+
+```{r}
+# Visualizing LOF scores
+ggplot(data.frame(lof_scores), aes(x = lof_scores)) +
+  geom_density(fill = "lightblue", alpha = 0.6) +
+  geom_vline(xintercept = threshold, color = "red", linetype = "dashed", size = 1) +
+  labs(title = "Density Plot of LOF Scores", x = "LOF Score", y = "Density")
 
 ```
