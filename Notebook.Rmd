@@ -13,7 +13,7 @@ rm(list = ls())
 set.seed(123)
 
 # List of required libraries
-required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree","Rlof")
+required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree", "Rlof", "e1071", "bestNormalize")
 
 # Install and load libraries
 for (lib in required_libraries) {
@@ -86,6 +86,7 @@ To solve missing NA values we will separate the dataset into both numerical and 
 ```{r}
 # Separating our dataset into both numerical and categorical data
 numeric_data <- select_if(training, is.numeric)
+numeric_data <- numeric_data %>% select(-Id)
 categorical_data <- select_if(training, is.character)
 ```
 
@@ -175,29 +176,59 @@ for (col_name in names(numeric_data)) {
 Now we will use different outlier detection methods, we will then combine them to see potential outliers and remove this records.
 
 ```{r}
-# Apply DBSCAN
-scaled_num_data <- as.data.frame(scale(numeric_data))
 
+
+# Step 1: Define the columns with issues
+problematic_cols <- c("LowQualFinSF", "OpenPorchSF", "EnclosedPorch", "X3SsnPorch", "ScreenPorch")
+
+# Step 2: Separate the problematic columns from the numeric data
+problematic_data <- numeric_data[, problematic_cols]
+new_numeric_data <- numeric_data[, !(names(numeric_data) %in% problematic_cols)]
+
+# Step 3: Scale the remaining numeric data
+scaled_num_data <- as.data.frame(apply(new_numeric_data, 2, function(col) {
+  bestNormalize(col, allow_orderNorm = TRUE)$x.t
+}))
+scaled_num_data <- as.data.frame(scale(scaled_num_data)) # Standardize
+
+# Step 4: Scale the problematic columns separately
+scaled_problematic <- as.data.frame(scale(problematic_data)) # Standardize without transformation
+
+# Step 5: Combine the scaled dataframes
+final_scaled_data <- cbind(scaled_num_data, scaled_problematic)
+
+for (col_name in names(final_scaled_data)) {
+  hist(
+    final_scaled_data[[col_name]], 
+    main = paste("Histogram of", col_name), 
+    xlab = col_name, 
+    col = "skyblue", 
+    border = "white"
+  )
+}
+```
+
+```{r}
 # Calculate k-distances (e.g., 4th nearest neighbor)
-kNNdistplot(scaled_num_data, k = 4)
+kNNdistplot(final_scaled_data, k = 4)
 abline(h = 6, col = "red", lty = 2)  # Choose the threshold for eps
 ```
 
 ```{r}
 
 
-model <- dbscan(scaled_num_data, eps = 6, minPts = 4)
+model <- dbscan(final_scaled_data, eps = 6, minPts = 4)
 
-pca <- prcomp(scaled_num_data, center = TRUE)
+pca <- prcomp(final_scaled_data, center = TRUE)
 
 # Get the first two principal components
 pca_data <- as.data.frame(pca$x)  # The principal components scores
 
 # Add cluster labels to the PCA data
-pca_data$cluster <- as.factor(model$cluster)
+pca_data$dbscan <- model$cluster
 
 # Plot Clusters
-ggplot(pca_data, aes(x = PC1, y = PC2, color = cluster)) +
+ggplot(pca_data, aes(x = PC1, y = PC2, color = as.factor(dbscan))) +
   geom_point(size = 3, alpha = 0.7) +
   scale_color_manual(values = c("red", RColorBrewer::brewer.pal(8, "Set2"))) +
   labs(title = "DBSCAN Clustering with Outliers",
@@ -205,7 +236,7 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = cluster)) +
        color = "Cluster") +
   theme_minimal()
 
-sum(pca_data$cluster == 0)
+sum(pca_data$dbscan == 0)
 
 # Identify Outliers
 # outliers <- data[model$cluster == 0, ]
@@ -231,10 +262,10 @@ sum(pca_data$cluster == 0)
 Using an Isolation Forest model for outlier detection
 
 ```{r}
-isolation_model <- isolation.forest(numeric_data, ndim = 1, ntrees = 100)
+isolation_model <- isolation.forest(final_scaled_data, ndim = 1, ntrees = 100)
 # We could change both ndim and ntrees for different results, but these results are good
 
-outlier_score <- predict(isolation_model, numeric_data, type = "score")
+outlier_score <- predict(isolation_model, final_scaled_data, type = "score")
 
 # Visualiing the different values
 hist(outlier_score, breaks = 20, main = "Distribution of Anomaly Scores")
@@ -244,10 +275,12 @@ We can see that most of the observations have a value between 0 and 0.5, accordi
 
 ```{r}
 # Stablishing a threshold for the highest values
-threshold <- quantile(outlier_score, 0.99)
+threshold <- quantile(outlier_score, 0.95)
 outliers <- which(outlier_score >= threshold)
 print(unique(outliers)) # DEVUELVE EL MISMO VALOR DOS VECES, POR ESO UNIQUE
 
+# Assuming 'data' is your dataset and 'outliers' contains the indices of outliers
+pca_data$iso <- ifelse(1:nrow(pca_data) %in% outliers, 0, 1)
 ```
 
 Using lof outlier detection model. LOF which stands for Local Outlier Factor. This model measures the local deviation of a point with respect to its neighbor. Points with a much lower density than its neighbor are considered to be outliers. The density of a point is considered to be how crowded or in other words if there are many neighbors around.
@@ -257,7 +290,7 @@ The LOF compares the density of a point with its neighbors, a LOF higher than 1 
 ```{r}
 # Compute LOF scores
 k <- 20  # Number of neighbors
-lof_scores <- lof(numeric_data, k)
+lof_scores <- lof(final_scaled_data, k)
 
 # Identify outliers 
 threshold <- quantile(lof_scores, 0.99)
@@ -274,5 +307,55 @@ ggplot(data.frame(lof_scores), aes(x = lof_scores)) +
   geom_density(fill = "lightblue", alpha = 0.6) +
   geom_vline(xintercept = threshold, color = "red", linetype = "dashed", size = 1) +
   labs(title = "Density Plot of LOF Scores", x = "LOF Score", y = "Density")
+
+```
+
+```{r}
+
+# Fit the One-Class SVM
+ocsvm_model <- svm(
+  final_scaled_data,
+  type = "one-classification",
+  kernel = "radial",  # RBF kernel
+  gamma = 1 / ncol(data),  # Default gamma (1 / num_features)
+  nu = 0.05  # Proportion of outliers you expect
+)
+
+# Get predictions
+predictions <- predict(ocsvm_model, final_scaled_data)
+
+# Add the numeric predictions as a column to the PCA data
+pca_data$ocsvm <- ifelse(predictions, 1, 0)
+
+# Plot Clusters
+ggplot(pca_data, aes(x = PC1, y = PC2, color = as.factor(ocsvm))) +
+  geom_point(size = 3, alpha = 0.7) +
+  scale_color_manual(values = c("red", RColorBrewer::brewer.pal(8, "Set2"))) +
+  labs(title = "OCSVM Outliers Detection",
+       subtitle = "Red points indicate outliers",
+       color = "Outlier") +
+  theme_minimal()
+
+sum(pca_data$ocsvm == F)
+
+
+```
+
+```{r}
+# Assuming your data has three columns: 'iso', 'ocsvm', and 'dbscan'
+# Create the final column
+pca_data$outliers <- ifelse(rowSums(pca_data[, c("iso", "ocsvm", "dbscan")]) >= 2, 1, 0)
+
+sum(pca_data$outliers == 0)
+
+# Plot Clusters
+ggplot(pca_data, aes(x = PC1, y = PC2, color = as.factor(outliers), shape=as.factor(iso))) +
+  geom_point(size = 3, alpha = 0.65) +
+  scale_color_manual(values = c("red", RColorBrewer::brewer.pal(8, "Set2"))) +
+  labs(title = "OCSVM Outliers Detection",
+       subtitle = "Red points indicate outliers",
+       color = "Outlier") +
+  theme_minimal()
+
 
 ```
