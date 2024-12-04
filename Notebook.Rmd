@@ -13,7 +13,7 @@ rm(list = ls())
 set.seed(123)
 
 # List of required libraries
-required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree", "Rlof", "e1071", "bestNormalize")
+required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree" ,"e1071", "bestNormalize","caret")
 
 # Install and load libraries
 for (lib in required_libraries) {
@@ -28,7 +28,7 @@ We will start obtaining the datasets and interpreting what we have as well as ma
 
 ```{r}
 training <- read.csv("train.csv", sep = ",")
-testing <- read.csv("test.csv", sep = ",")
+#testing <- read.csv("test.csv", sep = ",")
 ```
 
 ```{r}
@@ -131,7 +131,7 @@ na_columns <- c("BsmtQual", "BsmtCond", "BsmtExposure", "BsmtFinType1","BsmtFinT
 categorical_data[na_columns][is.na(categorical_data[na_columns])] <- "None" 
 ```
 
-Applying KNN to do the imputation.
+Applying KNN to do the imputation for the remaining NA values.
 
 ```{r}
 # Replace NA values with the mode of each column
@@ -172,8 +172,6 @@ for (col_name in names(numeric_data)) {
 }
   
 ```
-
-Now we will use different outlier detection methods, we will then combine them to see potential outliers and remove this records.
 
 ```{r}
 
@@ -243,22 +241,6 @@ sum(pca_data$dbscan == 0)
 # cleaned_data <- data[model$cluster != 0, ]
 ```
 
-```{r}
-# You may need to install devtools to install this package
-#install.packages("devtools")
-#devtools::install_github("twitter/AnomalyDetection")
-
-# Load the AnomalyDetection package
-#library(AnomalyDetection)
-
-# Example for time series anomaly detection
-#result <- AnomalyDetectionVec(scaled_num_data$SalePrice, max_anoms = 0.1, direction = 'both', plot = TRUE)
-
-# View the identified anomalies
-#print(result$anoms)
-
-```
-
 Using an Isolation Forest model for outlier detection
 
 ```{r}
@@ -279,35 +261,7 @@ threshold <- quantile(outlier_score, 0.95)
 outliers <- which(outlier_score >= threshold)
 print(unique(outliers)) # DEVUELVE EL MISMO VALOR DOS VECES, POR ESO UNIQUE
 
-# Assuming 'data' is your dataset and 'outliers' contains the indices of outliers
 pca_data$iso <- ifelse(1:nrow(pca_data) %in% outliers, 0, 1)
-```
-
-Using lof outlier detection model. LOF which stands for Local Outlier Factor. This model measures the local deviation of a point with respect to its neighbor. Points with a much lower density than its neighbor are considered to be outliers. The density of a point is considered to be how crowded or in other words if there are many neighbors around.
-
-The LOF compares the density of a point with its neighbors, a LOF higher than 1 indicates a point in a low density region in relation to its neighbors (potential outlier). A LOF value close to 1 indicates a point which is not an outlier. This is calculated using the reachability distance which is just the maximum of either the distance between two points and the distance of one point and the kth nearest neighbor.
-
-```{r}
-# Compute LOF scores
-k <- 20  # Number of neighbors
-lof_scores <- lof(final_scaled_data, k)
-
-# Identify outliers 
-threshold <- quantile(lof_scores, 0.99)
-outliers <- which(lof_scores > threshold)
-
-# View results
-print(outliers)
-
-```
-
-```{r}
-# Visualizing LOF scores
-ggplot(data.frame(lof_scores), aes(x = lof_scores)) +
-  geom_density(fill = "lightblue", alpha = 0.6) +
-  geom_vline(xintercept = threshold, color = "red", linetype = "dashed", size = 1) +
-  labs(title = "Density Plot of LOF Scores", x = "LOF Score", y = "Density")
-
 ```
 
 ```{r}
@@ -357,5 +311,59 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = as.factor(outliers), shape=as.fac
        color = "Outlier") +
   theme_minimal()
 
+
+```
+
+This returns a variable which contains 0 is at least 2 of the 3 models consider the point to be an outlier, if not, it will return a 1. Therefore, we will proceed to obtain the indices of the rows with a value of 0 and remove them from both our categorical and numerical data.
+
+```{r}
+# Obtaining the indices of the outliers
+outlier_indices <- which(pca_data$outliers == 0)
+# This returns 63 indices 
+
+
+# Removing this indices from the dataset
+final_scaled_data <- final_scaled_data[-outlier_indices,]
+categorical_data <- categorical_data[-outlier_indices,]
+```
+
+## **FEATURE EXTRACTION**
+
+We have many variables and this really high dimensionality could be really bad in our future analysis. Therefore, we will use RFE (recursive feature elimination)
+
+First of all we will have to handle categorical data,
+
+```{r}
+# We will first combine our data to do the feature selection.
+
+full_data <- cbind(categorical_data,final_scaled_data)
+```
+
+RFE
+
+RFE or Recursive Feature Elimination builds many models, in this case Random Forest models as it will handle categorical data. It will remove the least important features each time. It measures the quality of the variables based on Gini importance. The least imporant variables are eliminated and the process is repeated with the reduced dataset. This process is repeated until the best value is found.
+
+```{r}
+# We will have to separate the predictors and target variable
+predictors <- full_data[,-which(names(full_data) == "SalePrice")]
+target_variable <- full_data$SalePrice
+
+control <- rfeControl(functions = rfFuncs, method = "cv", number = 5)
+# Functions indicates that random forest will be done here, cv refers to cross validation, which in this case as number is 5, it will separate the data in 5 splits. 
+
+rfe <- rfe(predictors, target_variable, sizes = seq(10, 35, by = 5), rfeControl = control)
+# Performs RFE, the variable size takes into account the number of features we will keep. This process tries models with all different sizes, computes the optimal size based on the accuracy and returns the best size.
+
+print(rfe)
+
+selected_features <- predictors(rfe)
+print(selected_features)
+```
+
+The first column variables, refers to the number of variables each of the models done has. RMSE is the root mean squared error which is the average of the error between predicted and actual values. The lower this value is, the better. The R squared shows the proportion of the variance of the target variable, the closer to one, the better. MAE (Mean Absolute Error), we want to obtain low number. The RMSESD, which is the standard deviation of the RMSE, lower values indicate a grater performance. RsquaredSD, the standard deviation of R squared. Same as the previous varaibles, we want a low value. MAESD, the standard deviation of the MAE, same as before, the lower the better. Finally, the selected column shows an asterisk in the final chosen model.
+
+```{r}
+# Obtaining our reduced dataset with the most important variables.
+reduced_data <- full_data[,selected_features]
 
 ```
