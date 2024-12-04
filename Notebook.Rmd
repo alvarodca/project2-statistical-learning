@@ -156,7 +156,7 @@ data <- cbind(numeric_data, categorical_data)
 skim(data)
 ```
 
-## 2.2 OUTLIERS
+## 2.2 Ouliers
 
 We will now deal with potential outliers, to do this we will first visualize the distribution each of the variables follow separating both numerical and categorical data
 
@@ -310,8 +310,6 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = as.factor(outliers), shape=as.fac
        subtitle = "Red points indicate outliers",
        color = "Outlier") +
   theme_minimal()
-
-
 ```
 
 This returns a variable which contains 0 is at least 2 of the 3 models consider the point to be an outlier, if not, it will return a 1. Therefore, we will proceed to obtain the indices of the rows with a value of 0 and remove them from both our categorical and numerical data.
@@ -327,7 +325,7 @@ final_scaled_data <- final_scaled_data[-outlier_indices,]
 categorical_data <- categorical_data[-outlier_indices,]
 ```
 
-## **FEATURE EXTRACTION**
+## 2.3 Feature Extraction
 
 We have many variables and this really high dimensionality could be really bad in our future analysis. Therefore, we will use RFE (recursive feature elimination)
 
@@ -335,7 +333,6 @@ First of all we will have to handle categorical data,
 
 ```{r}
 # We will first combine our data to do the feature selection.
-
 full_data <- cbind(categorical_data,final_scaled_data)
 ```
 
@@ -345,25 +342,65 @@ RFE or Recursive Feature Elimination builds many models, in this case Random For
 
 ```{r}
 # We will have to separate the predictors and target variable
-predictors <- full_data[,-which(names(full_data) == "SalePrice")]
-target_variable <- full_data$SalePrice
+num_predictors <- final_scaled_data[,-which(names(final_scaled_data) == "SalePrice")]
+target_variable <- final_scaled_data$SalePrice
 
 control <- rfeControl(functions = rfFuncs, method = "cv", number = 5)
-# Functions indicates that random forest will be done here, cv refers to cross validation, which in this case as number is 5, it will separate the data in 5 splits. 
+# Functions indicates that random forest will be done here, cv refers to cross validation, which in this case as number is 5, it will separate the data in 5 splits.
 
-rfe <- rfe(predictors, target_variable, sizes = seq(10, 35, by = 5), rfeControl = control)
+# Numerical columns
+
+rfe_num <- rfe(num_predictors, target_variable, sizes = seq(5, 35, by = 5), rfeControl = control)
 # Performs RFE, the variable size takes into account the number of features we will keep. This process tries models with all different sizes, computes the optimal size based on the accuracy and returns the best size.
+print(rfe_num)
 
-print(rfe)
 
-selected_features <- predictors(rfe)
-print(selected_features)
+# Categorical columns 
+rfe_cat <- rfe(categorical_data, target_variable, sizes = seq(5, 15, by = 2), rfeControl = control)
+# Performs RFE, the variable size takes into account the number of features we will keep. This process tries models with all different sizes, computes the optimal size based on the accuracy and returns the best size.
+print(rfe_cat)
+
 ```
 
 The first column variables, refers to the number of variables each of the models done has. RMSE is the root mean squared error which is the average of the error between predicted and actual values. The lower this value is, the better. The R squared shows the proportion of the variance of the target variable, the closer to one, the better. MAE (Mean Absolute Error), we want to obtain low number. The RMSESD, which is the standard deviation of the RMSE, lower values indicate a grater performance. RsquaredSD, the standard deviation of R squared. Same as the previous varaibles, we want a low value. MAESD, the standard deviation of the MAE, same as before, the lower the better. Finally, the selected column shows an asterisk in the final chosen model.
 
 ```{r}
+selected_num_features <- predictors(rfe_num)[1:15]
+print(selected_num_features)
+
+selected_cat_features <- predictors(rfe_cat)[1:9]
+print(selected_cat_features)
+
+selected_features <- c(selected_num_features, selected_cat_features)
+
 # Obtaining our reduced dataset with the most important variables.
 reduced_data <- full_data[,selected_features]
+reduced_data$SalePrice <- target_variable
 
 ```
+
+## 2.4 Encoding
+
+After having reduced the dimensionality of categorical features, we can proceed with encoding, in other terms, converting categorical variables into numerical ones. This is done because many algorithms that we are going to use later need all data to be numerical, so it is a mandatory step.
+
+```{r}
+skim(reduced_data)
+# Get unique values for each categorical column
+lapply(reduced_data[, sapply(reduced_data, is.character)], unique)
+
+```
+
+Firstly we can see that there are many variables that have a predetermined order, like ExterQual (Excellent, Good...). For this types of variables we will use label encoding, that assigns to each instance a number so that there is a scale.
+
+```{r}
+reduced_data$ExterQual <- as.integer(factor(reduced_data$ExterQual, levels = c("Po", "Fa", "TA", "Gd", "Ex")))
+reduced_data$FireplaceQu <- as.integer(factor(reduced_data$FireplaceQu, levels = c("None", "Po", "Fa", "TA", "Gd", "Ex")))
+reduced_data$BsmtQual <- as.integer(factor(reduced_data$BsmtQual, levels = c("None", "Fa", "TA", "Gd", "Ex")))
+reduced_data$KitchenQual <- as.integer(factor(reduced_data$KitchenQual, levels = c("Fa", "TA", "Gd", "Ex")))
+reduced_data$GarageType <- as.integer(factor(reduced_data$GarageType, levels = c("None", "Detchd", "CarPort", "BuiltIn", "Basment", "Attchd", "2Types")))
+
+```
+
+There are 4 variables that have not any order in their categories, for them we have two options. Firstly, we could use one-hot encoding (creating columns with 0s and 1s depending on the unique values of each column), but this is not feasable for most variables, since they have unique values, and would increase the number of columns highly.
+
+Instead, we will use target encoding, where each unique value is replaced with the mean SalePrice of it, since we know from the feature extraction that these variables are important. This aproach has a risk, and is data leakage, since these columns may "give too much information" about the target value to a future model. For this we will use cross validation, in order not to have this data leakage.
