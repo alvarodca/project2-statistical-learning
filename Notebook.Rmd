@@ -27,8 +27,7 @@ for (lib in required_libraries) {
 We will start obtaining the datasets and interpreting what we have as well as making some decision which could be useful for our future analysis.
 
 ```{r}
-training <- read.csv("train.csv", sep = ",")
-#testing <- read.csv("test.csv", sep = ",")
+data <- read.csv("train.csv", sep = ",")
 ```
 
 ```{r}
@@ -36,6 +35,18 @@ skim(training)
 ```
 
 With a first visualization of the dataset we can see that 43 of the columns are categorical while 38 of them are numerical.
+
+### Data Splitting
+
+As we have around 1400 observations we will divide data into a 50/50 split for testing and training.
+
+```{r}
+split <- createDataPartition(data$SalePrice, p = 0.5, list = FALSE)
+training <- data[split,]
+testing <- data[-split,]
+nrow(training)
+nrow(testing)
+```
 
 # 2. Data Preprocessing
 
@@ -55,7 +66,7 @@ Based on the previous plot and the skim function used we can see that there are 
 colnames(training)[which(colMeans(is.na(training))>0.75)]
 ```
 
-These columns are Alley, FirePlaceQu, PoolQC, Fence and MiscFeature
+These columns are Alley, PoolQC, Fence and MiscFeature
 
 Alley refers to the type of alley access to the property. It can be Gravel or Paved, NA means no alley, almost all houses have an NA value here, we don't think that the type of alley is of great importance, so we will remove it.
 
@@ -79,7 +90,7 @@ ncol(training %>% filter(if_any(everything(), is.na)))
 nrow(training %>% filter(if_any(everything(), is.na)))
 ```
 
-We can see that 877 observations have NA values, therefore we will now concentrate on replacing the missing values, taking into account their importance and if the missing variable is categorical or not.
+We can see that we still have many observations with NA values, therefore we will now concentrate on replacing the missing values, taking into account their importance and if the missing variable is categorical or not.
 
 To solve missing NA values we will separate the dataset into both numerical and categorical variables, work with both split datasets and then after dealing with the missing values we will merge them.
 
@@ -96,11 +107,11 @@ We will start working with numerical data as it will be a little bit easier, fir
 skim(numeric_data)
 ```
 
-We can see that only 3 variables contain missing values, these are LotFrontage containing 259 missing values, MasVnrArea with 8 and finally GarageYrBlt with 81 values.
+We can see that only 3 variables contain missing values, these are LotFrontage ,MasVnrArea ,GarageYrBlt
 
-About 82% of the observations have a value for LotFrontage which is the variable with more NA values, this is a high completion rate and therefore we will not remove it.
+Most of the observations have a value for LotFrontage which is the variable with more NA values, this is a high completion rate and therefore we will not remove it.
 
-To solve this missing value we will use imputation by the median .
+To solve these missing values we will use imputation by the median .
 
 ```{r}
 # Replace NA values with the median of each column
@@ -404,3 +415,62 @@ reduced_data$GarageType <- as.integer(factor(reduced_data$GarageType, levels = c
 There are 4 variables that have not any order in their categories, for them we have two options. Firstly, we could use one-hot encoding (creating columns with 0s and 1s depending on the unique values of each column), but this is not feasable for most variables, since they have unique values, and would increase the number of columns highly.
 
 Instead, we will use target encoding, where each unique value is replaced with the mean SalePrice of it, since we know from the feature extraction that these variables are important. This aproach has a risk, and is data leakage, since these columns may "give too much information" about the target value to a future model. For this we will use cross validation, in order not to have this data leakage.
+
+First we will create a function that will create this target encoding.
+
+```{r}
+# Function for target encoding with cross-validation
+target_encode_cv <- function(data, target_col, cat_columns, n_folds = 5) {
+  folds <- createFolds(data[[target_col]], k = n_folds)  # Create folds
+  
+  # Initialize an empty dataframe to store encoded results
+  data_encoded <- data
+  
+  # Loop through each categorical column
+  for (col in cat_columns) {
+    # Initialize the encoded column
+    data_encoded[[paste0(col, '_enc')]] <- NA
+    
+    # Process each fold
+    for (fold in 1:n_folds) {
+      # Split into training and validation folds
+      val_indices <- folds[[fold]]
+      train_fold <- data[-val_indices, ]
+      val_fold <- data[val_indices, ]
+      
+      # Compute means in the training fold for the target variable
+      means <- train_fold %>%
+        group_by(.data[[col]]) %>%
+        summarize(mean_target = mean(.data[[target_col]], na.rm = TRUE))
+      
+      # Merge the means with the validation fold
+      val_fold <- val_fold %>%
+        left_join(means, by = col) %>%
+        mutate(mean_target = ifelse(is.na(mean_target), mean(train_fold[[target_col]], na.rm = TRUE), mean_target))
+      
+      # Assigning the encoded values
+      data_encoded[val_indices, paste0(col, '_enc')] <- val_fold$mean_target
+    }
+  }
+  
+  return(data_encoded)
+}
+
+```
+
+Applying the function to the variables, and changing the encoded rows to our original dataset
+
+```{r}
+# Remaining variables
+categorical_columns <- c("HouseStyle", "MSZoning", "Neighborhood", "BldgType")
+df_encoded <- target_encode_cv(reduced_data, target_col = "SalePrice", cat_columns = categorical_columns)
+
+# Switching the variables
+reduced_data$HouseStyle <- df_encoded$HouseStyle_enc
+reduced_data$Neighborhood <- df_encoded$Neighborhood_enc
+reduced_data$MSZoning <- df_encoded$MSZoning_enc
+reduced_data$BldgType <- df_encoded$BldgType_enc
+
+```
+
+## 
