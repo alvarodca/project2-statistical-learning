@@ -24,24 +24,23 @@ for (lib in required_libraries) {
 }
 ```
 
-We will start obtaining the datasets and interpreting what we have as well as making some decision which could be useful for our future analysis.
+We will start by importing the dataset and interpreting both its structure and content.
 
 ```{r}
 data <- read.csv("train.csv", sep = ",")
+skim(data)
 ```
 
-```{r}
-skim(training)
-```
+With a first visualization of the dataset we can see that 43 of the columns are categorical while 38 of them are numerical. We can also observe some missing values as well as some redundant columns, like Id.
 
-With a first visualization of the dataset we can see that 43 of the columns are categorical while 38 of them are numerical.
+### 1.1 Data Splitting
 
-### Data Splitting
+Before doing any other analysis or operations with the data we will split into training and testing sets. This is because we will treat the test data as "future" data, and looking at it during development could unintentionally bias the models.
 
-As we have around 1400 observations we will divide data into a 50/50 split for testing and training.
+Furthermore, since the dataset is relatively small (\~1500 observations), we will reserve a 20% of data for testing The remaining 80% will be used for training, since we will also use cross-validation to evaluate any model. This ensures that we have sufficient data to have robust predictivions and evaluations.
 
 ```{r}
-split <- createDataPartition(data$SalePrice, p = 0.5, list = FALSE)
+split <- createDataPartition(data$SalePrice, p = 0.8, list = FALSE)
 training <- data[split,]
 testing <- data[-split,]
 nrow(training)
@@ -50,19 +49,21 @@ nrow(testing)
 
 # 2. Data Preprocessing
 
-We can see that there are some columns that have many NA values, we will use a barplot to visualize this better and decide whether we should remove columns or not.
+Before training any model, it is mandatory to perform a thorough preprocessing. This does not only consist on correcting any errors on the data, but also on transforming it into a format that the algorithms that will be applied can handle. Moreover, it is also a key step to improve model performance, since eliminating noise will positively impact the precision of predictions.
 
 ## 2.1 NA Values
 
+We observed before that there were some columns that had many NA values. We will use a barplot to visualize this better and decide what to do with them.
+
 ```{r}
-# Plotting a barplot with the number of NA values
+# Barplot with the number of NA values
 barplot(colMeans(is.na(training)), las=2)
 ```
 
 Based on the previous plot and the skim function used we can see that there are some variables which have NA values for most if not almost all of the observations.
 
 ```{r}
-# Finidng out the columns with a high number of NA values
+# Finding out the columns with a high number of NA values
 colnames(training)[which(colMeans(is.na(training))>0.75)]
 ```
 
@@ -92,7 +93,7 @@ nrow(training %>% filter(if_any(everything(), is.na)))
 
 We can see that we still have many observations with NA values, therefore we will now concentrate on replacing the missing values, taking into account their importance and if the missing variable is categorical or not.
 
-To solve missing NA values we will separate the dataset into both numerical and categorical variables, work with both split datasets and then after dealing with the missing values we will merge them.
+To solve missing NA values we will separate the dataset into both numerical and categorical variables. Then we will work with both split datasets, and after dealing with the missing values we will merge them back.
 
 ```{r}
 # Separating our dataset into both numerical and categorical data
@@ -101,17 +102,17 @@ numeric_data <- numeric_data %>% select(-Id)
 categorical_data <- select_if(training, is.character)
 ```
 
-We will start working with numerical data as it will be a little bit easier, firstly we will have a look at the different columns
+We will start working with numerical data as it will be a little bit easier. Firstly we will have a look at the different columns
 
 ```{r}
 skim(numeric_data)
 ```
 
-We can see that only 3 variables contain missing values, these are LotFrontage ,MasVnrArea ,GarageYrBlt
+We can see that only 3 variables contain missing values, these are LotFrontage, MasVnrArea, GarageYrBlt.
 
 Most of the observations have a value for LotFrontage which is the variable with more NA values, this is a high completion rate and therefore we will not remove it.
 
-To solve these missing values we will use imputation by the median .
+Finally, to solve these missing values we will use imputation by the median. The reason behind this is that most of the data is complete and we don't think that doing any fancy imputation will drastically improve any future models in this case.
 
 ```{r}
 # Replace NA values with the median of each column
@@ -122,7 +123,7 @@ numeric_data <- numeric_data %>%
 nrow(numeric_data %>% filter(if_any(everything(), is.na)))
 ```
 
-Now that the NA values are solved for numeric data, we will have to check for categorical data.
+Now that the NA values are solved for numeric data, we will have to check the categorical data.
 
 ```{r}
 skim(categorical_data)
@@ -130,9 +131,7 @@ skim(categorical_data)
 
 The variables with missing values are MasVnrType, all the variables referring to Bsmt which refers to the basement, one NA value in Electrical. Garage variables also have NA values. FirePlaceQu is the variable with most missing values.
 
-As for MasVnrType there are only 8 missing values , Electrical has only one missing value. Due to this we will use KNN to find the most similar points to our missing value and then imputing its most similar value.
-
-Some of the NA values in the basement, garage and FirePlaceQu refer to that the house has none of these elements, therefore we will change the NA values from NA to None. We might use this variables later with encoding to obtain a better analysis and prediction.
+Some of the NA values in the basement, garage and FirePlaceQu refer to that the house has none of these elements (as specified in the dataset webpage) , therefore we will change the NA values to None.
 
 ```{r}
 # Choosing the columns to change from NA to None
@@ -142,17 +141,15 @@ na_columns <- c("BsmtQual", "BsmtCond", "BsmtExposure", "BsmtFinType1","BsmtFinT
 categorical_data[na_columns][is.na(categorical_data[na_columns])] <- "None" 
 ```
 
-Applying KNN to do the imputation for the remaining NA values.
+As for MasVnrType there are only 8 missing values, Electrical has only one missing value. Due to this we will use KNN. This finds the most similar observations based on the other variables and imputes the missing value accordingly. With this small number of NAs we reduce the risk of introducing bias or overfitting in the imputation.
 
 ```{r}
 # Replace NA values with the mode of each column
-
 imputed_categorical_data <- VIM::kNN(categorical_data,
                                 variable = c("MasVnrType","Electrical"),
                                 k = 10)
 
 # KNN creates a new dataset with extra columns which indicate the rows that have been changed, therefore we will have to change the imputed rows for our original rows
-
 categorical_data$MasVnrType <- imputed_categorical_data$MasVnrType
 categorical_data$Electrical <- imputed_categorical_data$Electrical
 
@@ -161,15 +158,17 @@ nrow(categorical_data %>% filter(if_any(everything(), is.na)))
 
 ```
 
+Now that there are no NA values we can merge the training data back together.
+
 ```{r}
 # Combining both datasets and obtaining a general view of it
-data <- cbind(numeric_data, categorical_data)
+training <- cbind(numeric_data, categorical_data)
 skim(data)
 ```
 
-## 2.2 Ouliers
+## 2.2 Outliers
 
-We will now deal with potential outliers, to do this we will first visualize the distribution each of the variables follow separating both numerical and categorical data
+We will now deal with potential outliers, since as we discussed before, handling them properly can improve our predictions. Firstly, we will visualize the distribution of each of the variables separating both numerical and categorical data again.
 
 ```{r}
 for (col_name in names(numeric_data)) {
@@ -184,28 +183,31 @@ for (col_name in names(numeric_data)) {
   
 ```
 
+As we can see, there is a lot of variability in the data, some of them are left-skewed while some right-skewed. Also there are some discrete variables like FullBath that represents the number of full baths in the house. Before we can handle the outliers we will have to scale and transform the data.
+
+Because of the wide variety of distributions in the data we cannot make every transformation by hand. Instead we will use a library that, based on mathematical values, applies the best transformation possible to the column and then scales it, so that it is as close to a Gaussian distribution as possible. The library had some problems with the transformation of some columns that had many 0 values, so we separated them and scaled them separately.
+
 ```{r}
-
-
-# Step 1: Define the columns with issues
+# Problematic columns (because of errors with bestNormalize)
 problematic_cols <- c("LowQualFinSF", "OpenPorchSF", "EnclosedPorch", "X3SsnPorch", "ScreenPorch")
 
-# Step 2: Separate the problematic columns from the numeric data
+# Separating the problematic columns
 problematic_data <- numeric_data[, problematic_cols]
 new_numeric_data <- numeric_data[, !(names(numeric_data) %in% problematic_cols)]
 
-# Step 3: Scale the remaining numeric data
+# Scaling the remaining numeric data
 scaled_num_data <- as.data.frame(apply(new_numeric_data, 2, function(col) {
   bestNormalize(col, allow_orderNorm = TRUE)$x.t
 }))
-scaled_num_data <- as.data.frame(scale(scaled_num_data)) # Standardize
+scaled_num_data <- as.data.frame(scale(scaled_num_data)) 
 
-# Step 4: Scale the problematic columns separately
-scaled_problematic <- as.data.frame(scale(problematic_data)) # Standardize without transformation
+# Scaling the problematic columns separately
+scaled_problematic <- as.data.frame(scale(problematic_data)) 
 
-# Step 5: Combine the scaled dataframes
+# Combining the scaled dataframes
 final_scaled_data <- cbind(scaled_num_data, scaled_problematic)
 
+# Plotting again the distributions
 for (col_name in names(final_scaled_data)) {
   hist(
     final_scaled_data[[col_name]], 
@@ -217,22 +219,38 @@ for (col_name in names(final_scaled_data)) {
 }
 ```
 
+Now we can see that most of the data resembles a $N(\mu=0, \sigma=1)$ so the scaling has been done correctly and we can fully focus on outliers.
+
+For the detection of outliers we will use three algorithms following the logic of an ensemble, in order to have a more robust prediction. We will only use numerical columns, since clustering algorithms do not handle categorical variables properly without transformations.
+
+The first algorithm we will use is DBSCAN. It is a clustering algorithm that identifies clusters based on the density of data points. Points are classified into three categories: core points, border points and noise, based on this:
+
+$$N_\epsilon(p) = \{q \in D \mid d(p,q) \leq \epsilon \}$$
+
+Where $N_\epsilon$ is the $\epsilon$-neighborhood for a point. With this, a point $p$ is a core point if:
+
+$$|N_\epsilon(p)| \geq minPts$$
+
+Where $minPts$ is a hyper-parameter, the number of points for a region to be considered dense. Clusters are then formed by expanding the $\epsilon$-neighborhood of core points iteratively. Those observation not in this neighborhood will be the oultiers.
+
+With this explanation we see the importance of picking the right $\epsilon$ value (eps) and the number of neighbors (minPts). Because of this we will calculate the k-distances plot and use the elbow method to determine the eps. As minPts we will use 4, since it is a reasonable number in our case.
+
 ```{r}
 # Calculate k-distances (e.g., 4th nearest neighbor)
-kNNdistplot(final_scaled_data, k = 4)
-abline(h = 6, col = "red", lty = 2)  # Choose the threshold for eps
+kNNdistplot(final_scaled_data, k = 10)
+abline(h = 6.5, col = "red", lty = 2)  # Choose the threshold for eps
 ```
 
+We see that there is an elbow at 6.5, so this is the value we will use for eps. With this we can finally train a DBSCAN model and plot our predictions for outliers.
+
 ```{r}
+# Training the model
+model <- dbscan(final_scaled_data, eps = 6.5, minPts = 10)
 
-
-model <- dbscan(final_scaled_data, eps = 6, minPts = 4)
-
+# Performing pca for plotting
 pca <- prcomp(final_scaled_data, center = TRUE)
-
 # Get the first two principal components
 pca_data <- as.data.frame(pca$x)  # The principal components scores
-
 # Add cluster labels to the PCA data
 pca_data$dbscan <- model$cluster
 
@@ -245,11 +263,8 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = as.factor(dbscan))) +
        color = "Cluster") +
   theme_minimal()
 
+# Calculate the total number of outliers detected
 sum(pca_data$dbscan == 0)
-
-# Identify Outliers
-# outliers <- data[model$cluster == 0, ]
-# cleaned_data <- data[model$cluster != 0, ]
 ```
 
 Using an Isolation Forest model for outlier detection
@@ -471,6 +486,8 @@ reduced_data$Neighborhood <- df_encoded$Neighborhood_enc
 reduced_data$MSZoning <- df_encoded$MSZoning_enc
 reduced_data$BldgType <- df_encoded$BldgType_enc
 
-```
+# Scaling the data becuase of the encodings
+reduced_data <- as.data.frame(scale(reduced_data))
 
-## 
+skim(reduced_data)
+```
