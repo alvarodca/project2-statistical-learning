@@ -267,28 +267,41 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = as.factor(dbscan))) +
 sum(pca_data$dbscan == 0)
 ```
 
-Using an Isolation Forest model for outlier detection
+The second method for outlier detection we will use is Isolation Forests. They are a tree-based unsupervised learning method specific for anomally detection. They use the idea that outliers are usually more 'isolated' than normal observation. Each tree in the forest splits the data by selecting a random feature and a split value.
+
+The path length $h(x)$ of a point $x$ is the number of splits required to isolate the observation. Since outliers are far from dense clusters, usually they have shorter path lengths. With this we calculate the anomaly score:
+
+$$
+s(x) = 2^{-\frac{H(x)}{c(n)}}
+$$
+
+Where $c(n)$ is the average path length for a normal data point in a dataset of $n$ observations, and $H(x)$ is the average path legth of the point. The closest this anomaly score is to 1 the more likely it is an anomaly. Therefore we will look at the anomaly score to see where the outliers lie.
 
 ```{r}
+# Setting ndim=1 to only take into account one feature at each split 
+# for simplicity, and ntrees as 100 to make an ensemble for more robust
+# predictions
 isolation_model <- isolation.forest(final_scaled_data, ndim = 1, ntrees = 100)
-# We could change both ndim and ntrees for different results, but these results are good
-
 outlier_score <- predict(isolation_model, final_scaled_data, type = "score")
 
-# Visualiing the different values
+# Visualizing the different values
 hist(outlier_score, breaks = 20, main = "Distribution of Anomaly Scores")
 ```
 
-We can see that most of the observations have a value between 0 and 0.5, according to this model a value of 0.5 is the boundary between outliers and the rest of points. Values closer to 1 are potential outliers. We can see that there is one observation far away from the rest while there are some observations between 0.52 and 0.6 which are few but could also be outliers.
+We can see that most of the observations have an anomaly score between 0 and 0.5, so according to this model a value of around 0.5 should be the boundary between outliers and the rest of points. We can see that there is one observation far away from the rest while there are some observations between 0.52 and 0.6 which are few but could also be outliers.
+
+We will set the inlier proportion to 0.95, meaning that we will assume that 5% of our data are outliers. With this and the previous model we trained, we can predict outliers.
 
 ```{r}
 # Stablishing a threshold for the highest values
 threshold <- quantile(outlier_score, 0.95)
 outliers <- which(outlier_score >= threshold)
-print(unique(outliers)) # DEVUELVE EL MISMO VALOR DOS VECES, POR ESO UNIQUE
+print(unique(outliers))
 
 pca_data$iso <- ifelse(1:nrow(pca_data) %in% outliers, 0, 1)
 ```
+
+The third model we will use for outlier detection is OCSVM (One-Class Support Vector Machine).
 
 ```{r}
 
