@@ -301,10 +301,17 @@ print(unique(outliers))
 pca_data$iso <- ifelse(1:nrow(pca_data) %in% outliers, 0, 1)
 ```
 
-The third model we will use for outlier detection is OCSVM (One-Class Support Vector Machine).
+The third model we will use for outlier detection is OCSVM (One-Class Support Vector Machine). It is an unsupervised learning algorithm that tries to separate the anomalies from the rest of the data with a hyperplane (a line in 2D) that maximizes the distance between the outliers and the other points.
+
+Mathematically, OCSVM maps points $x_i$ into higher-dimensional feature space using a kernel function $\phi(x)$. This is done to capture non-linear relationships (similar to what we did in Kernel K-Means). It then finds a decision function:
+
+$$
+f(x) = \langle w,  \phi(x) \rangle - \rho
+$$
+
+Where $w$ is the weight vector of the hyperplane, $\rho$ is the offset and $\langle w, \phi(x) \rangle$ is the inner product in the feature space. Then the optimization proble minimizes the modulus of $w$ while allowing a small fraction $\upsilon$ (this controls the proportion of outliers) of points to lie outside the boudary. If $f(x_i) < 0$ then $x_i$ is classified as an outlier.
 
 ```{r}
-
 # Fit the One-Class SVM
 ocsvm_model <- svm(
   final_scaled_data,
@@ -330,14 +337,11 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = as.factor(ocsvm))) +
   theme_minimal()
 
 sum(pca_data$ocsvm == F)
-
-
-
 ```
 
-We now have a dataset based on the PCA we have done, this dataset contains three extra columns which correspond to each of the outlier detection models we have made. In each of these columns, an observation can take a value of either 0 or 1, if it has a 0, it is considered an outlier.
+We keep using the dataset based on the PCA we have done (for plotting mainly), this dataset contains three extra columns which correspond to each of the outlier detection models we have made. In each of these columns, an observation can take a value of either 0 or 1, if it has a 0, it is considered an outlier.
 
-Therefore, we created another column that decided if an observatoin had at least 2 0's, in other words, at least two models consider the observation to be an outlier, this point will be eliminated from our dataset. As different models assure that this points are atypical points we can discard them from our dataset confidently.
+Therefore, we created another column that decided if an observatoin had at least two 0's, in other words, at least two models consider the observation to be an outlier, this point will be eliminated from our dataset. As different models assure that this points are atypical points we can discard them from our dataset confidently.
 
 ```{r}
 
@@ -350,18 +354,18 @@ sum(pca_data$outliers == 0)
 ggplot(pca_data, aes(x = PC1, y = PC2, color = as.factor(outliers), shape=as.factor(iso))) +
   geom_point(size = 3, alpha = 0.65) +
   scale_color_manual(values = c("red", RColorBrewer::brewer.pal(8, "Set2"))) +
-  labs(title = "OCSVM Outliers Detection",
+  labs(title = "Ensemble Outliers Detection",
        subtitle = "Red points indicate outliers",
        color = "Outlier",
-       shape = "Isolation Forest") +
+       shape = "Isolation Forest Prediction") +
   theme_minimal()
 ```
 
-The previous graph compares the OSVM and the isolation forest, where the distinction by color is the outlier detection done by the OSVM and the distinction by shape is done by the Isolation Forest.
+The previous graph compares the ensemble's prediction with the isolation forest, where the distinction by color is the outlier detection done by the ensemble and the distinction by shape is done by the Isolation Forest.
 
-We can see that most of the outliers are the same for both models, although there are some discrepancies.
+We can see that most of the outliers are predicted the same way, although there are some discrepancies. These are mainly between the Isolation Forest and the other models, since their approach is quite different.
 
-We will now proceed to eliminate the outliers.
+With this, we will now proceed to eliminate the outliers.
 
 ```{r}
 # Obtaining the indices of the outliers
@@ -409,21 +413,19 @@ print(rfe_num)
 rfe_cat <- rfe(categorical_data, target_variable, sizes = seq(5, 15, by = 2), rfeControl = control)
 
 print(rfe_cat)
-
-
-
-
 ```
 
-The first column variables, refers to the number of variables each of the models that have been created has. RMSE is the root mean squared error which is the average of the error between predicted and actual values. The lower this value is, the better. The R squared shows the proportion of the variance of the target variable, the closer to one, the better. MAE (Mean Absolute Error), we want to obtain low number. The RMSESD, which is the standard deviation of the RMSE, lower values indicate a grater performance. RsquaredSD, the standard deviation of R squared. Same as the previous variables, we want a low value. MAESD, the standard deviation of the MAE, same as before, the lower the better. Finally, the selected column shows an asterisk in the final chosen model.
+The first column variables, refers to the number of variables each of the models that have been created has. RMSE is the root mean squared error which is the average of the error between predicted and actual values. The lower this value is, the better. The R squared shows the proportion of the variance of the target variable, the closer to one, the better. For MAE (Mean Absolute Error), we want to obtain a low number. The RMSESD, which is the standard deviation of the RMSE, lower values indicate a grater performance. RsquaredSD, the standard deviation of R squared. Same as the previous variables, we want a low value. MAESD, the standard deviation of the MAE, same as before, the lower the better. Finally, the selected column shows an asterisk in the final chosen model.
 
-In this case we will focus on the first three columns we want to minimie the number of variables which return a low prediction error and explain a high percentage of the variance of the sale price.
+In this case we will focus on the first three columns we want to minimize the number of variables which return a low prediction error and explain a high percentage of the variance of the sale price.
 
 We can see that for numerical data the model for 15 variables is not the best result-wise but it returns a really good value despite it being a really big dimensionality reduction, therefore we will choose 15 variables.
 
 Moreover, for categorical data, the lowest MSE and MAE is obtained by the model with 9 variables, it is also a decent value for the R squared based on the fact that it is only 9 variables.
 
 ```{r}
+full_scaled_data = cbind(final_scaled_data, categorical_data)
+
 # Selecting 15 features for numerical data
 selected_num_features <- predictors(rfe_num)[1:15]
 print(selected_num_features)
@@ -436,7 +438,7 @@ print(selected_cat_features)
 selected_features <- c(selected_num_features, selected_cat_features)
 
 # Obtaining our reduced dataset with the most important variables.
-reduced_data <- full_data[,selected_features]
+reduced_data <- full_scaled_data[,selected_features]
 reduced_data$SalePrice <- target_variable
 
 ```
@@ -449,7 +451,7 @@ This resulted in a final dataset of 1118 observations and 25 variables which is 
 
 After having reduced the dimensionality of categorical features, we can proceed with encoding.
 
-Most statistical and machine-learning models require the predictors to be in some sort of numeric encoding. In this case, most of the algorithms and models that we will use later in our project need data to be numerical. There are many encoding methods that we will use to convert categorical variables into numerical ones.
+Most statistical and machine learning models require the predictors to be in some sort of numeric format. In this case, most of the algorithms and models that we will use later in our project need data to be numerical. There are many encoding methods that we could use to convert categorical variables into numerical ones, so we have to choose wisely.
 
 ```{r}
 skim(reduced_data)
@@ -465,15 +467,13 @@ reduced_data$ExterQual <- as.integer(factor(reduced_data$ExterQual, levels = c("
 reduced_data$FireplaceQu <- as.integer(factor(reduced_data$FireplaceQu, levels = c("None", "Po", "Fa", "TA", "Gd", "Ex")))
 reduced_data$BsmtQual <- as.integer(factor(reduced_data$BsmtQual, levels = c("None", "Fa", "TA", "Gd", "Ex")))
 reduced_data$KitchenQual <- as.integer(factor(reduced_data$KitchenQual, levels = c("Fa", "TA", "Gd", "Ex")))
-reduced_data$GarageType <- as.integer(factor(reduced_data$GarageType, levels = c("None", "Detchd", "CarPort", "BuiltIn", "Basment", "Attchd", "2Types")))
-
 ```
 
-There are 4 variables that have not any order in their categories, for them we have two options. Firstly, we could use one-hot encoding (creating columns with 0s and 1s depending on the unique values of each column), but this is not feasable for most variables, since they have unique values, and would increase the number of columns highly.
+There are 5 variables left that have not any order in their categories, for them we have two options. Firstly, we could use one-hot encoding (creating columns with 0s and 1s depending on the unique values of each column), but this is not feasable for most variables, since they have many unique values, and would increase the number of columns highly.
 
-Instead, we will use target encoding, where each unique value is replaced with the mean SalePrice of it, since we know from the feature extraction that these variables are important. This aproach has a risk, and is data leakage, since these columns may "give too much information" about the target value to a future model. For this we will use cross validation, in order not to have this data leakage.
+Instead, we will use target encoding, where each unique value is replaced with the mean SalePrice of it, since we know from the feature extraction that these variables are important. This aproach has a risk, which is data leakage, since these columns may "give too much information" about the target value to a future model. For this we will use cross validation, in order not to have this data leakage.
 
-First we will create a function that will create this target encoding.
+First we will create a function that will carry out this target encoding.
 
 ```{r}
 # Function for target encoding with cross-validation
@@ -515,11 +515,11 @@ target_encode_cv <- function(data, target_col, cat_columns, n_folds = 5) {
 
 ```
 
-We now have the code that encodes our desired columns based on target encoding, therefore we will now apply it to our dataset.
+We now have the code that encodes our desired columns based on target encoding, therefore we will now apply it to our dataset and finish with the preprocessing.
 
 ```{r}
 # Remaining variables
-categorical_columns <- c("HouseStyle", "MSZoning", "Neighborhood", "BldgType")
+categorical_columns <- c("HouseStyle", "MSZoning", "Neighborhood", "BldgType", "GarageType")
 # Applying the function
 df_encoded <- target_encode_cv(reduced_data, target_col = "SalePrice", cat_columns = categorical_columns)
 
@@ -528,9 +528,10 @@ reduced_data$HouseStyle <- df_encoded$HouseStyle_enc
 reduced_data$Neighborhood <- df_encoded$Neighborhood_enc
 reduced_data$MSZoning <- df_encoded$MSZoning_enc
 reduced_data$BldgType <- df_encoded$BldgType_enc
+reduced_data$GarageType <- df_encoded$GarageType_enc
 
 # Scaling the data becuase of the encodings
-reduced_data <- as.data.frame(scale(reduced_data))
+reduced_data[, (ncol(reduced_data) - 10):(ncol(reduced_data) - 1)] <- scale(reduced_data[, (ncol(reduced_data) - 10):(ncol(reduced_data) - 1)])
 
 # Obtaining a general view of our final encoded dataset
 skim(reduced_data)
