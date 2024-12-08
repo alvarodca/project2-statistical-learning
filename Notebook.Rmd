@@ -332,11 +332,16 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = as.factor(ocsvm))) +
 sum(pca_data$ocsvm == F)
 
 
+
 ```
 
+We now have a dataset based on the PCA we have done, this dataset contains three extra columns which correspond to each of the outlier detection models we have made. In each of these columns, an observation can take a value of either 0 or 1, if it has a 0, it is considered an outlier.
+
+Therefore, we created another column that decided if an observatoin had at least 2 0's, in other words, at least two models consider the observation to be an outlier, this point will be eliminated from our dataset. As different models assure that this points are atypical points we can discard them from our dataset confidently.
+
 ```{r}
-# Assuming your data has three columns: 'iso', 'ocsvm', and 'dbscan'
-# Create the final column
+
+# Creating the final column based on the values
 pca_data$outliers <- ifelse(rowSums(pca_data[, c("iso", "ocsvm", "dbscan")]) >= 2, 1, 0)
 
 sum(pca_data$outliers == 0)
@@ -347,37 +352,42 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = as.factor(outliers), shape=as.fac
   scale_color_manual(values = c("red", RColorBrewer::brewer.pal(8, "Set2"))) +
   labs(title = "OCSVM Outliers Detection",
        subtitle = "Red points indicate outliers",
-       color = "Outlier") +
+       color = "Outlier",
+       shape = "Isolation Forest") +
   theme_minimal()
 ```
 
-This returns a variable which contains 0 is at least 2 of the 3 models consider the point to be an outlier, if not, it will return a 1. Therefore, we will proceed to obtain the indices of the rows with a value of 0 and remove them from both our categorical and numerical data.
+The previous graph compares the OSVM and the isolation forest, where the distinction by color is the outlier detection done by the OSVM and the distinction by shape is done by the Isolation Forest.
+
+We can see that most of the outliers are the same for both models, although there are some discrepancies.
+
+We will now proceed to eliminate the outliers.
 
 ```{r}
 # Obtaining the indices of the outliers
 outlier_indices <- which(pca_data$outliers == 0)
-# This returns 63 indices 
-
+# This will return 51 indices 
 
 # Removing this indices from the dataset
 final_scaled_data <- final_scaled_data[-outlier_indices,]
 categorical_data <- categorical_data[-outlier_indices,]
 ```
 
-## 2.3 Feature Extraction
+For our categorical data we have around 39 variables and our numerical data has 37 variables. This yields up to 76 columns. This is a really high dimension and this could really affect our future analysis. Because of this, we will reduce our dataset to obtain the most important variables which affect our target variable sale price.
 
-We have many variables and this really high dimensionality could be really bad in our future analysis. Therefore, we will use RFE (recursive feature elimination)
+## 2.3 Feature Extraction
 
 First of all we will have to handle categorical data,
 
-```{r}
-# We will first combine our data to do the feature selection.
-full_data <- cbind(categorical_data,final_scaled_data)
-```
+We will obtain the most important features with the help of RFE method.
 
-RFE
+RFE or Recursive Feature Elimination builds many models based on the target variable. It will remove variables based on their importance calculated with the Gini index. With this reduced dataset it will create another model and again remove the least important variable. This process is repeated until the best value is found.
 
-RFE or Recursive Feature Elimination builds many models, in this case Random Forest models as it will handle categorical data. It will remove the least important features each time. It measures the quality of the variables based on Gini importance. The least imporant variables are eliminated and the process is repeated with the reduced dataset. This process is repeated until the best value is found.
+After applying this process we will obtain an optimal subset of predictors which contribute the most to the target variable.
+
+When using this method there are two hyperparameters to take into account, the type of model that will be created, which in our case due to that we have categorical data we will clearly use Random Forests. Apart from that, we can also select the number features that will be used in each of the models.
+
+As we want to reduce our dimensionality based on the output of the RFE we will select an specific amount of variables which return a good value and do not make us loose a lot of information about the target variable .
 
 ```{r}
 # We will have to separate the predictors and target variable
@@ -385,10 +395,11 @@ num_predictors <- final_scaled_data[,-which(names(final_scaled_data) == "SalePri
 target_variable <- final_scaled_data$SalePrice
 
 control <- rfeControl(functions = rfFuncs, method = "cv", number = 5)
-# Functions indicates that random forest will be done here, cv refers to cross validation, which in this case as number is 5, it will separate the data in 5 splits.
+# rfFuncs refers to that random forests will be done
+# cv refers to that cross validation will be done
+# Number referes to the number of folds created by cross validation
 
 # Numerical columns
-
 rfe_num <- rfe(num_predictors, target_variable, sizes = seq(5, 35, by = 5), rfeControl = control)
 # Performs RFE, the variable size takes into account the number of features we will keep. This process tries models with all different sizes, computes the optimal size based on the accuracy and returns the best size.
 print(rfe_num)
@@ -396,20 +407,32 @@ print(rfe_num)
 
 # Categorical columns 
 rfe_cat <- rfe(categorical_data, target_variable, sizes = seq(5, 15, by = 2), rfeControl = control)
-# Performs RFE, the variable size takes into account the number of features we will keep. This process tries models with all different sizes, computes the optimal size based on the accuracy and returns the best size.
+
 print(rfe_cat)
+
+
+
 
 ```
 
-The first column variables, refers to the number of variables each of the models done has. RMSE is the root mean squared error which is the average of the error between predicted and actual values. The lower this value is, the better. The R squared shows the proportion of the variance of the target variable, the closer to one, the better. MAE (Mean Absolute Error), we want to obtain low number. The RMSESD, which is the standard deviation of the RMSE, lower values indicate a grater performance. RsquaredSD, the standard deviation of R squared. Same as the previous varaibles, we want a low value. MAESD, the standard deviation of the MAE, same as before, the lower the better. Finally, the selected column shows an asterisk in the final chosen model.
+The first column variables, refers to the number of variables each of the models that have been created has. RMSE is the root mean squared error which is the average of the error between predicted and actual values. The lower this value is, the better. The R squared shows the proportion of the variance of the target variable, the closer to one, the better. MAE (Mean Absolute Error), we want to obtain low number. The RMSESD, which is the standard deviation of the RMSE, lower values indicate a grater performance. RsquaredSD, the standard deviation of R squared. Same as the previous variables, we want a low value. MAESD, the standard deviation of the MAE, same as before, the lower the better. Finally, the selected column shows an asterisk in the final chosen model.
+
+In this case we will focus on the first three columns we want to minimie the number of variables which return a low prediction error and explain a high percentage of the variance of the sale price.
+
+We can see that for numerical data the model for 15 variables is not the best result-wise but it returns a really good value despite it being a really big dimensionality reduction, therefore we will choose 15 variables.
+
+Moreover, for categorical data, the lowest MSE and MAE is obtained by the model with 9 variables, it is also a decent value for the R squared based on the fact that it is only 9 variables.
 
 ```{r}
+# Selecting 15 features for numerical data
 selected_num_features <- predictors(rfe_num)[1:15]
 print(selected_num_features)
 
+# Selecting 9 features for categorical data
 selected_cat_features <- predictors(rfe_cat)[1:9]
 print(selected_cat_features)
 
+# Combining both results
 selected_features <- c(selected_num_features, selected_cat_features)
 
 # Obtaining our reduced dataset with the most important variables.
@@ -418,9 +441,15 @@ reduced_data$SalePrice <- target_variable
 
 ```
 
+We reduced our numerical features to 15 variables and our categorical data to 9 variables. Going from 76 variables to 24, where we added the target variable.
+
+This resulted in a final dataset of 1118 observations and 25 variables which is a really big change with respect to what we previously had, and will improve our future analysis.
+
 ## 2.4 Encoding
 
-After having reduced the dimensionality of categorical features, we can proceed with encoding, in other terms, converting categorical variables into numerical ones. This is done because many algorithms that we are going to use later need all data to be numerical, so it is a mandatory step.
+After having reduced the dimensionality of categorical features, we can proceed with encoding.
+
+Most statistical and machine-learning models require the predictors to be in some sort of numeric encoding. In this case, most of the algorithms and models that we will use later in our project need data to be numerical. There are many encoding methods that we will use to convert categorical variables into numerical ones.
 
 ```{r}
 skim(reduced_data)
@@ -429,7 +458,7 @@ lapply(reduced_data[, sapply(reduced_data, is.character)], unique)
 
 ```
 
-Firstly we can see that there are many variables that have a predetermined order, like ExterQual (Excellent, Good...). For this types of variables we will use label encoding, that assigns to each instance a number so that there is a scale.
+Firstly we can see that there are many variables that have a predetermined order, like ExterQual (Excellent, Good...). As there is a clear distinction between the values of the variables we will use label encoding, that assigns to each instance a number so that there is a scale.
 
 ```{r}
 reduced_data$ExterQual <- as.integer(factor(reduced_data$ExterQual, levels = c("Po", "Fa", "TA", "Gd", "Ex")))
@@ -451,7 +480,7 @@ First we will create a function that will create this target encoding.
 target_encode_cv <- function(data, target_col, cat_columns, n_folds = 5) {
   folds <- createFolds(data[[target_col]], k = n_folds)  # Create folds
   
-  # Initialize an empty dataframe to store encoded results
+  # Initializing an empty dataframe to store encoded results
   data_encoded <- data
   
   # Loop through each categorical column
@@ -486,11 +515,12 @@ target_encode_cv <- function(data, target_col, cat_columns, n_folds = 5) {
 
 ```
 
-Applying the function to the variables, and changing the encoded rows to our original dataset
+We now have the code that encodes our desired columns based on target encoding, therefore we will now apply it to our dataset.
 
 ```{r}
 # Remaining variables
 categorical_columns <- c("HouseStyle", "MSZoning", "Neighborhood", "BldgType")
+# Applying the function
 df_encoded <- target_encode_cv(reduced_data, target_col = "SalePrice", cat_columns = categorical_columns)
 
 # Switching the variables
@@ -502,5 +532,6 @@ reduced_data$BldgType <- df_encoded$BldgType_enc
 # Scaling the data becuase of the encodings
 reduced_data <- as.data.frame(scale(reduced_data))
 
+# Obtaining a general view of our final encoded dataset
 skim(reduced_data)
 ```
