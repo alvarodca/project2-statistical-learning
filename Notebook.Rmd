@@ -13,7 +13,7 @@ rm(list = ls())
 set.seed(123)
 
 # List of required libraries
-required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree" ,"e1071", "bestNormalize","caret", "GGally")
+required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree" ,"e1071", "bestNormalize","caret", "GGally", "corrplot", "ellipse")
 
 # Install and load libraries
 for (lib in required_libraries) {
@@ -168,7 +168,7 @@ skim(training)
 
 ## 2.2 Exploratory Data Analysis
 
-We will deal with outliers later as they are a bit complicated to deal with in this dataset due to the distribution of the variables, this distribution can be seen in a graph we made below.
+We will deal with outliers later as they are a bit complicated to deal with in this dataset due to the distribution of the variables, this distribution can be seen in the graph we made below.
 
 If we do the scaling to remove outliers we will not be able to correctly visualize the data. Moreover, visualizing our data could be crucial for potentially finding out some outliers.
 
@@ -195,7 +195,7 @@ ggplot(training, aes(x = SalePrice, y = GrLivArea))+
 
 This first graph compares the square feet area of the House in relation to the Sale Price. This is differentiated by color with respect to the quality of the house and all the houses are differentiated by the different dwelling styles which refer mostly to the different floors the house has.
 
-This graph clearly shows a positive correlation between the Sale Price and the Area, which makes sense, the bigger the house the bigger the price. Both of these variables seem to also be correlated with the Overall Quality as usually more expensive houses or bigger houses have really good quality.
+This graph clearly shows a positive correlation between the Sale Price and the Area, which makes sense, the bigger the house the pricier the house. Both of these variables seem to also be correlated with the Overall Quality as usually more expensive houses or bigger houses have really good quality.
 
 In relation to the dwelling, most of the houses are either 1 story or 2 story, we see that the price, area and quality is not really affected by the type of the dwelling, although it helps us to differentiate the data and we can see some points for example in the 2 story there is a house with really high area and moderate price which could be an outlier.
 
@@ -212,11 +212,22 @@ ggplot(training, aes(x = YearBuilt, y = SalePrice, color = BldgType)) +
 
 ```
 
-We can see that throughout the years the single family house (1Fam) was the most common house sold. Up until the 1980s two family homes (2fmCon) were also sold and sometimes reached higher sale prices than the single family. From the 1980s onwards there was an increase in the different types and its price at which the houses were sold.
+We can see that throughout the years the single family house (1Fam) was the most common house sold. Up until the 1980s two family homes (2fmCon) were also sold and sometimes reached higher sale prices than the single family, but from then on it seems they stopped being built (or we not have this info in our dataset). For the houses built from the 1980s onwards there was an increase in the different types and its price at which the houses were sold.
 
 With respect to the price we can see a high increase in all the different housing categories when the 2000s are reached which could be due to inflation, an overall economic growth and a growth of urban population.
 
 Moreover, there are also sudden decreases in price for example for Townhouse End Units (TwnhsE) which could be due to a lower demand or different and more affordable housing options.
+
+To conclude our EDA we will do a correlation plot for the numeric data.
+
+```{r}
+cor_matrix = cor(numeric_data)
+
+corrplot(cor_matrix, method = "circle", type = "upper", tl.col = "black", tl.srt = 90)
+
+```
+
+We observe that some columns like OverallQual (overall quality of the house) have a really strong positive correlation with the predictor, SalePrice. Moreover, many of them have little to no correlation with the predictor, so we will have to deal with them later since they may be noise affecting future models. Finally there are very few negative correlations between columns which is interesting.
 
 ## 2.3 Outliers
 
@@ -506,6 +517,14 @@ After having reduced the dimensionality of categorical features, we can proceed 
 Most statistical and machine learning models require the predictors to be in some sort of numeric format. In this case, most of the algorithms and models that we will use later in our project need data to be numerical. There are many encoding methods that we could use to convert categorical variables into numerical ones, so we have to choose wisely.
 
 ```{r}
+data_enc <- reduced_data
+data_not_enc <- reduced_data
+
+# Convert all character columns to factors
+data_not_enc[] <- lapply(data_not_enc, function(col) {
+  if (is.character(col)) as.factor(col) else col
+})
+
 skim(reduced_data)
 # Get unique values for each categorical column
 lapply(reduced_data[, sapply(reduced_data, is.character)], unique)
@@ -515,10 +534,10 @@ lapply(reduced_data[, sapply(reduced_data, is.character)], unique)
 Firstly we can see that there are many variables that have a predetermined order, like ExterQual (Excellent, Good...). As there is a clear distinction between the values of the variables we will use label encoding, that assigns to each instance a number so that there is a scale.
 
 ```{r}
-reduced_data$ExterQual <- as.integer(factor(reduced_data$ExterQual, levels = c("Po", "Fa", "TA", "Gd", "Ex")))
-reduced_data$FireplaceQu <- as.integer(factor(reduced_data$FireplaceQu, levels = c("None", "Po", "Fa", "TA", "Gd", "Ex")))
-reduced_data$BsmtQual <- as.integer(factor(reduced_data$BsmtQual, levels = c("None", "Fa", "TA", "Gd", "Ex")))
-reduced_data$KitchenQual <- as.integer(factor(reduced_data$KitchenQual, levels = c("Fa", "TA", "Gd", "Ex")))
+data_enc$ExterQual <- as.integer(factor(data_enc$ExterQual, levels = c("Po", "Fa", "TA", "Gd", "Ex")))
+data_enc$FireplaceQu <- as.integer(factor(data_enc$FireplaceQu, levels = c("None", "Po", "Fa", "TA", "Gd", "Ex")))
+data_enc$BsmtQual <- as.integer(factor(data_enc$BsmtQual, levels = c("None", "Fa", "TA", "Gd", "Ex")))
+data_enc$KitchenQual <- as.integer(factor(data_enc$KitchenQual, levels = c("Fa", "TA", "Gd", "Ex")))
 ```
 
 There are 5 variables left that have not any order in their categories, for them we have two options. Firstly, we could use one-hot encoding (creating columns with 0s and 1s depending on the unique values of each column), but this is not feasable for most variables, since they have many unique values, and would increase the number of columns highly.
@@ -573,18 +592,90 @@ We now have the code that encodes our desired columns based on target encoding, 
 # Remaining variables
 categorical_columns <- c("HouseStyle", "MSZoning", "Neighborhood", "BldgType", "GarageType")
 # Applying the function
-df_encoded <- target_encode_cv(reduced_data, target_col = "SalePrice", cat_columns = categorical_columns)
+df_encoded <- target_encode_cv(data_enc, target_col = "SalePrice", cat_columns = categorical_columns)
 
 # Switching the variables
-reduced_data$HouseStyle <- df_encoded$HouseStyle_enc
-reduced_data$Neighborhood <- df_encoded$Neighborhood_enc
-reduced_data$MSZoning <- df_encoded$MSZoning_enc
-reduced_data$BldgType <- df_encoded$BldgType_enc
-reduced_data$GarageType <- df_encoded$GarageType_enc
+data_enc$HouseStyle <- df_encoded$HouseStyle_enc
+data_enc$Neighborhood <- df_encoded$Neighborhood_enc
+data_enc$MSZoning <- df_encoded$MSZoning_enc
+data_enc$BldgType <- df_encoded$BldgType_enc
+data_enc$GarageType <- df_encoded$GarageType_enc
 
 # Scaling the data becuase of the encodings
-reduced_data[, (ncol(reduced_data) - 10):(ncol(reduced_data) - 1)] <- scale(reduced_data[, (ncol(reduced_data) - 10):(ncol(reduced_data) - 1)])
+data_enc[, (ncol(data_enc) - 10):(ncol(data_enc) - 1)] <- scale(data_enc[, (ncol(data_enc) - 10):(ncol(data_enc) - 1)])
 
 # Obtaining a general view of our final encoded dataset
-skim(reduced_data)
+skim(data_enc)
 ```
+
+After all of the preprocessing, it is interesting to do again another correlation plot to see how our data has changed after the preprocessing and to perhaps identify some mistakes we did.
+
+```{r}
+cor_matrix = cor(data_enc)
+
+corrplot(cor_matrix, method = "circle", type = "upper", tl.col = "black", tl.srt = 90)
+
+```
+
+We now can see that most of the variables have a strong positive relation with the predictor, with this we are sure that the feature extraction we did was successful. Furthermore, after the encoding we see that many variables that were categorical have a strong correlation with the SalePrice, such as Neighborhood. This tells us that doing the encoding to handle categorical variables was worth it.
+
+Many of the algorithms we will use are specific for classification, while our predictor is a numerical variable. To deal with this problem we will divide the price of each house into 5 categories (Very Low, Low, Medium, High, Very High). We will make this classification based on quantiles so that we have balanced categories, which will make it easier to train posterior models.
+
+```{r}
+# Quantile-based bins (e.g., quartiles or deciles)
+num_categories <- 5  # Use 5 for quintiles, 4 for quartiles, 10 for deciles
+data_enc$SalePrice_Category <- cut(data_enc$SalePrice, 
+                                       breaks = quantile(data_enc$SalePrice, probs = seq(0, 1, length.out = num_categories + 1)),
+                                       labels = paste0("Category_", 1:num_categories),
+                                       include.lowest = TRUE)
+
+# Assign descriptive labels
+labels <- c("Very Low", "Low", "Medium", "High", "Very High")
+data_enc$SalePrice_Category <- cut(data_enc$SalePrice, 
+                                breaks = quantile(data_enc$SalePrice, probs = seq(0, 1, length.out = 6)),
+                                labels = labels,
+                                include.lowest = TRUE)
+
+# For not encoded data
+# Quantile-based bins (e.g., quartiles or deciles)
+num_categories <- 5  # Use 5 for quintiles, 4 for quartiles, 10 for deciles
+data_not_enc$SalePrice_Category <- cut(data_not_enc$SalePrice, 
+                                       breaks = quantile(data_not_enc$SalePrice, probs = seq(0, 1, length.out = num_categories + 1)),
+                                       labels = paste0("Category_", 1:num_categories),
+                                       include.lowest = TRUE)
+
+# Assign descriptive labels
+labels <- c("Very Low", "Low", "Medium", "High", "Very High")
+data_not_enc$SalePrice_Category <- cut(data_not_enc$SalePrice, 
+                                breaks = quantile(data_not_enc$SalePrice, probs = seq(0, 1, length.out = 6)),
+                                labels = labels,
+                                include.lowest = TRUE)
+
+# Plot categories
+ggplot(data_enc, aes(x = SalePrice_Category, fill = SalePrice_Category)) + 
+  geom_bar()
+```
+
+# 3. Classification
+
+We will look at each algorithm starting with the simpler ones and building up to the more complex and precise ones. Along with each prediction, we will follow up with the interpretability of the results while trying to minimize the prediction error.
+
+## 3.1 Decision Trees
+
+### 3.1.1 Introduction
+
+## 3.2 K-Nearest Neighbors
+
+## 3.3 Linear Discriminant Analysis
+
+## 3.4 Quadratic Discriminant Analysis
+
+## 3.5 Naive Bayes
+
+## 3.6 Logistic Regression
+
+## 3.7 Support Vector Machines
+
+## 3.8 Random Forests
+
+## 3.9 Gradient Boosting 
