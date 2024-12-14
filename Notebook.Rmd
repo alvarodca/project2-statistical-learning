@@ -13,7 +13,7 @@ rm(list = ls())
 set.seed(123)
 
 # List of required libraries
-required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree" ,"e1071", "bestNormalize","caret")
+required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree" ,"e1071", "bestNormalize","caret", "GGally")
 
 # Install and load libraries
 for (lib in required_libraries) {
@@ -163,10 +163,62 @@ Now that there are no NA values we can merge the training data back together.
 ```{r}
 # Combining both datasets and obtaining a general view of it
 training <- cbind(numeric_data, categorical_data)
-skim(data)
+skim(training)
 ```
 
-## 2.2 Outliers
+## 2.2 Exploratory Data Analysis
+
+We will deal with outliers later as they are a bit complicated to deal with in this dataset due to the distribution of the variables, this distribution can be seen in a graph we made below.
+
+If we do the scaling to remove outliers we will not be able to correctly visualize the data. Moreover, visualizing our data could be crucial for potentially finding out some outliers.
+
+We want to generate some insights to obtain information about the Sale Price and how it relates to the remaining variables.
+
+```{r}
+ggplot(training, aes(x = SalePrice, y = GrLivArea))+
+  geom_point(aes(color = OverallQual))+
+  scale_x_continuous(labels = scales::comma) +
+  facet_wrap(~ HouseStyle)+
+    labs(
+      title="Relation of Area, Quality and House Style in relation to the Sale Price",
+      x = "Sale Price",
+      y = "Area",
+      color = "Quality"
+    )+
+  theme(
+    plot.title = element_text(size = 12, face = "bold"),
+    axis.title.x = element_text(size = 12),
+    axis.title.y = element_text(size = 12)
+  )
+  
+```
+
+This first graph compares the square feet area of the House in relation to the Sale Price. This is differentiated by color with respect to the quality of the house and all the houses are differentiated by the different dwelling styles which refer mostly to the different floors the house has.
+
+This graph clearly shows a positive correlation between the Sale Price and the Area, which makes sense, the bigger the house the bigger the price. Both of these variables seem to also be correlated with the Overall Quality as usually more expensive houses or bigger houses have really good quality.
+
+In relation to the dwelling, most of the houses are either 1 story or 2 story, we see that the price, area and quality is not really affected by the type of the dwelling, although it helps us to differentiate the data and we can see some points for example in the 2 story there is a house with really high area and moderate price which could be an outlier.
+
+We will now compare the Sale Price respect to the year it was built and differentiating by the Type of Dwelling
+
+```{r}
+
+ggplot(training, aes(x = YearBuilt, y = SalePrice, color = BldgType)) +
+  geom_smooth(method = "loess", se = FALSE) +
+  labs(title = "Trend of SalePrice Over YearBuilt by BldgType", 
+       x = "Year Built", 
+       y = "Sale Price") +
+  theme_minimal()
+
+```
+
+We can see that throughout the years the single family house (1Fam) was the most common house sold. Up until the 1980s two family homes (2fmCon) were also sold and sometimes reached higher sale prices than the single family. From the 1980s onwards there was an increase in the different types and its price at which the houses were sold.
+
+With respect to the price we can see a high increase in all the different housing categories when the 2000s are reached which could be due to inflation, an overall economic growth and a growth of urban population.
+
+Moreover, there are also sudden decreases in price for example for Townhouse End Units (TwnhsE) which could be due to a lower demand or different and more affordable housing options.
+
+## 2.3 Outliers
 
 We will now deal with potential outliers, since as we discussed before, handling them properly can improve our predictions. Firstly, we will visualize the distribution of each of the variables separating both numerical and categorical data again.
 
@@ -379,7 +431,7 @@ categorical_data <- categorical_data[-outlier_indices,]
 
 For our categorical data we have around 39 variables and our numerical data has 37 variables. This yields up to 76 columns. This is a really high dimension and this could really affect our future analysis. Because of this, we will reduce our dataset to obtain the most important variables which affect our target variable sale price.
 
-## 2.3 Feature Extraction
+## 2.4 Feature Extraction
 
 First of all we will have to handle categorical data,
 
@@ -447,7 +499,7 @@ We reduced our numerical features to 15 variables and our categorical data to 9 
 
 This resulted in a final dataset of 1118 observations and 25 variables which is a really big change with respect to what we previously had, and will improve our future analysis.
 
-## 2.4 Encoding
+## 2.5 Encoding
 
 After having reduced the dimensionality of categorical features, we can proceed with encoding.
 
