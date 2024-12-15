@@ -13,7 +13,7 @@ rm(list = ls())
 set.seed(123)
 
 # List of required libraries
-required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree" ,"e1071", "bestNormalize","caret", "GGally", "corrplot", "ellipse")
+required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree" ,"e1071", "bestNormalize","caret", "GGally", "corrplot", "rpart", "rpart.plot")
 
 # Install and load libraries
 for (lib in required_libraries) {
@@ -664,7 +664,109 @@ We will look at each algorithm starting with the simpler ones and building up to
 
 ### 3.1.1 Introduction
 
+We will first look at decision trees, since they are a simple model. Although there are better algorithms for prediction, they are the foundations for more sophisticated methods. Furthermore, it is a white-box model, so it will help us understand how the predictions are done.
+
+Mathematically, decision trees do a split in the data based on selected features. They do this split based on the Gini index, a metric that is similar to accuracy, with the splits that yield the best Gini index at the root of the tree.
+
+### 3.1.2 Training
+
+Since we are focusing on classification we will remove the salePrice from the dataset. Furthermore, since decision trees can handle categorical variables, and for understanding pourposes, we will use the dataset that is not encoded.
+
+```{r}
+salePrice <- data_enc$SalePrice
+data_not_enc <- data_not_enc %>% select(-SalePrice)
+data_enc <- data_enc %>% select(-SalePrice)
+```
+
+Even though we know that the decision tree is not going to be our best model, we will do a 10-fold cross validation to check more or less the performance of this simple algorithm. In addition, we will not do any hyper-parameter tuning since as we said our main focus with this algorithm is interpretability.
+
+```{r}
+# Setting up cross-validation
+cv_folds <- trainControl(method = "cv", number = 10)
+# Performing cross-validation
+cv_model <- train(SalePrice_Category ~ ., data = data_not_enc, method = "rpart", trControl = cv_folds, tuneGrid = data.frame(cp = 0.01))
+# Checking results
+print(cv_model)
+
+# Saving the final model for visualization
+final_dt <- cv_model$finalModel
+```
+
+We see a 57% accuracy, which is not bad but there is room for improvement. Also we obtain a 0.47 Kappa value, which indicates a moderate agreement between the model's predictions and true labels.
+
+### 3.1.3 Understanding
+
+Now, we can plot the decision tree so that we can understand how the predictions are done.
+
+```{r}
+png("decision_tree.png", width = 3000, height = 2000, res = 300)  
+rpart.plot(final_dt, digits = 3)
+dev.off()  
+```
+
+The first split done is by OverallQual, which measure the overall quality of the house, with this we can see that houses with a higher quality usually are pricier, as expected. In the right part of the tree, we observe another split by OverallQual, so it indicates that houses with a very high overall quality are the most expensive ones. Another split is by GrLivArea, which measures the above ground area of the house, meaning that bigger houses are more expensive. Finally, it splits by GarageType, with the houses that have a garage attached to home being more expensive.
+
+In the other side of the decision tree, we observe a split with GarageArea, with observations with small garages being cheaper. We also see other splits, with BsmtFinSF1, with houses with smaller basements being less expensive. Finally we also see other splits, but all regarding the area of some part of the house, like the first floor.
+
+With this we learn that the most important variables may be the overall quality of the house, as well as some other metrics related to the area of different pars of the house.
+
 ## 3.2 K-Nearest Neighbors
+
+### 3.2.1 Introduction
+
+The next algorithm we will use is k-Nearest Neighbors. It is a supervised learning model that performs classification. Mathematically, the algorithm calculates, for each new data point, its distance to each point in the training data. We then define a hyperparameter $k$, that selects the $k$ closest data points to this new observation. The most common class of these $k$ closest observations is then chosen as the predicted class.
+
+Although this algorithm has some problems when dimensionality is high and it is a black-box model, we will use it to see how this types of algorithms perform in our data. This will help us understand whether the classes can be easily separable or not, as well as if more complex models are needed.
+
+### 3.2.2 Training
+
+Before training the final algorithm we have to choose the value for $k$, which is crucial for the algorithm to work optimally. For this we will perform hyper-parameter tuning for it, while measuring the efficiency of the model for each different value of $k$ with cross-validation.
+
+```{r}
+# Set up cross-validation
+train_control <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
+
+# Define the tuning grid for k values
+tune_grid <- expand.grid(k = 1:20)  # Try k values from 1 to 20 (you can adjust this range)
+
+# Train the KNN model with cross-validation
+knn_model <- train(SalePrice_Category ~ ., data = data_enc, method = "knn", trControl = train_control, tuneGrid = tune_grid)
+
+# Display the results
+print(knn_model)
+```
+
+### 3.2.3 Understanding
+
+We see that the optimal $k$, is 6 as it yields approximately a 66% accuracy and a kappa of 0.58. To visualize this model, we will train it on the whole dataset and perform PCA to visualize the classification in 2 dimensions.
+
+```{r}
+# Train the KNN model using caret
+train_control <- trainControl(method = "none")  # No resampling
+# Define the grid of values for k
+tune_grid <- expand.grid(k = 6)  # Set k = 6
+# Train the KNN model using caret on the entire dataset
+final_knn <- train(SalePrice_Category ~ ., data = data_enc, method = "knn", trControl = train_control, tuneGrid = tune_grid)
+
+# Perform PCA on the feature columns (exclude the target variable 'Class')
+pca_result <- prcomp(data_enc[, -which(names(data_enc) == "SalePrice_Category")])
+# Extract the first two principal components
+pca_data <- data.frame(pca_result$x[, 1:2])  # First two PCs
+pca_data$SalePrice_Category <- data_enc$SalePrice_Category  # Add class labels back to the data for visualization
+# Get predicted class labels using the trained KNN model
+pca_data$Predicted_Class <- predict(final_knn, newdata = data_enc)
+
+# Visualize the PCA result with predicted class labels
+ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class, shape=SalePrice_Category)) +
+  geom_point(alpha = 0.7, size = 3) +
+  labs(title = "KNN Predictions in 2D (PCA)", x = "Principal Component 1", y = "Principal Component 2") +
+  theme_minimal() +
+  scale_color_manual(values = rainbow(length(unique(pca_data$Predicted_Class))))  # Customize colors for predicted classes
+
+
+```
+
+We observe that most of the points in the class Very High have been classified correctly. We also see how Very Low has mostly been classified correctly, although there are more errors. On the other hand, the model struggles to distinguish between the 3 middle classes, which could be due to many factors, but one of them might be because the classification may be non-linear. To solve this we could use another type of distance in the k-NN such as Mahalanobis, or we could apply the kernel trick. Although these options might better the prediction slightly, we do not think that they would make the model perform much better, since the errors appear to be specific flaws of the k-NN algorithm itself. Instead, what we will do is focus more on the other models that might capture better this complexity of the data.
 
 ## 3.3 Linear Discriminant Analysis
 
@@ -678,4 +780,4 @@ We will look at each algorithm starting with the simpler ones and building up to
 
 ## 3.8 Random Forests
 
-## 3.9 Gradient Boosting 
+## 3.9 Gradient Boosting
