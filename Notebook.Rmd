@@ -13,7 +13,7 @@ rm(list = ls())
 set.seed(123)
 
 # List of required libraries
-required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree" ,"e1071", "bestNormalize","caret", "GGally", "corrplot", "rpart", "rpart.plot")
+required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree" ,"e1071", "bestNormalize","caret", "GGally", "corrplot", "rpart", "rpart.plot", "MASS","kraL","biotools")
 
 # Install and load libraries
 for (lib in required_libraries) {
@@ -80,7 +80,7 @@ MiscFeature mentions other additional features houses may have or not, such as t
 ```{r}
 # Deleting the variables
 na_columns <- c("Alley","PoolQC","Fence", "MiscFeature")
-training <- training %>% select(-all_of(na_columns))
+training <- training[, !(colnames(training) %in% na_columns)]
 
 # Obtaining the remaining number of NA values
 ncol(training %>% filter(if_any(everything(), is.na)))
@@ -98,7 +98,7 @@ To solve missing NA values we will separate the dataset into both numerical and 
 ```{r}
 # Separating our dataset into both numerical and categorical data
 numeric_data <- select_if(training, is.numeric)
-numeric_data <- numeric_data %>% select(-Id)
+numeric_data <- numeric_data[,-1]
 categorical_data <- select_if(training, is.character)
 ```
 
@@ -508,6 +508,34 @@ reduced_data$SalePrice <- target_variable
 
 We reduced our numerical features to 15 variables and our categorical data to 9 variables. Going from 76 variables to 24, where we added the target variable.
 
+Making a feature importance plot based on the RFE results, it will rank in both datasets how early each variable was selected and afterwards create a plot
+
+```{r eval=FALSE, include=FALSE}
+#Obtaining the importance from both numerical and categorical data
+
+num_importance <- varImp(rfe_num)$Importance
+
+cat_importance <- varImp(rfe_cat)$Importance
+
+feature_importance <- data.frame(
+
+Feature = c(rownames(num_importance), rownames(cat_importance)),
+
+Importance = c(num_importance$Overall, cat_importance$Overall
+
+))
+
+# Sorting the results to have them in order
+
+feature_importance <- feature_importance[order(-feature_importance$Importance)]
+
+ggplot(feature_importance, aes(x = reorder(Feature, Importance), y = Importance))+
+
+geom_bar(stat = "identity", fill = "steelblue")
+
+
+```
+
 This resulted in a final dataset of 1118 observations and 25 variables which is a really big change with respect to what we previously had, and will improve our future analysis.
 
 ## 2.5 Encoding
@@ -674,8 +702,8 @@ Since we are focusing on classification we will remove the salePrice from the da
 
 ```{r}
 salePrice <- data_enc$SalePrice
-data_not_enc <- data_not_enc %>% select(-SalePrice)
-data_enc <- data_enc %>% select(-SalePrice)
+data_not_enc <- data_not_enc[,-(ncol(data_not_enc)-1)]
+data_enc <- data_enc[,-(ncol(data_enc)-1)]
 ```
 
 Even though we know that the decision tree is not going to be our best model, we will do a 10-fold cross validation to check more or less the performance of this simple algorithm. In addition, we will not do any hyper-parameter tuning since as we said our main focus with this algorithm is interpretability.
@@ -768,16 +796,226 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class, shape=SalePrice_
 
 We observe that most of the points in the class Very High have been classified correctly. We also see how Very Low has mostly been classified correctly, although there are more errors. On the other hand, the model struggles to distinguish between the 3 middle classes, which could be due to many factors, but one of them might be because the classification may be non-linear. To solve this we could use another type of distance in the k-NN such as Mahalanobis, or we could apply the kernel trick. Although these options might better the prediction slightly, we do not think that they would make the model perform much better, since the errors appear to be specific flaws of the k-NN algorithm itself. Instead, what we will do is focus more on the other models that might capture better this complexity of the data.
 
-## 3.3 Linear Discriminant Analysis
+## 3.3 Quadratic Discriminant Analysis and Linear Discrimant Analysis
 
-## 3.4 Quadratic Discriminant Analysis
+The next algorithms we will see are really similar, the biggest difference is that Linear Discriminant Analysis assumes that the different classes in the prediction all have the same covariance matrix.
 
-## 3.5 Naive Bayes
+This is a really big difference which could potentialy be one of the reasons why we chose one process or the other.
 
-## 3.6 Logistic Regression
+To see if the covariance matrices are the same or not we will use Box\`s M Test which tests if two or more covariance matrices are equal or not. This test assumes normality from the data if not it could have many errors
 
-## 3.7 Support Vector Machines
+The null hypothesis for this test states that the covariance matrices are equal, a really high p value indicates that this is true. We will use the library biotools that will perform this test.It compares the product of log determinants of the matrices to the log determinant of a pooled matrix (average of all the matrices), it hten uses a chi squared approximation for the result. It is based on the formula:
 
-## 3.8 Random Forests
+$$
+M = \frac{n - k}{k \cdot (n - 1)} \sum_{i=1}^{k} (n_i - 1) \cdot \log \left( \det(\Sigma_i) \right) - \sum_{i=1}^{k} (n_i - 1) \cdot \log \left( \det(\Sigma) \right)
+$$
 
-## 3.9 Gradient Boosting
+Where n is the number of observations, k the number of classes ∑i is each covariance matrix, and finally the pooled matrix
+
+```{r}
+boxM_test <- boxM(data_enc[,-which(names(data_enc) == "SalePrice_Category")],
+                  grouping = data_enc$SalePrice_Category)
+print(boxM_test)
+```
+
+This test clearly suggest that the covariance matrices are different therefore Quadratic Discrimant Analysis will more likely be better in our dataset. However, in this project we are covering many different supervised learning algorithms to study and understand them. This is why we will also cover Linear Discriminant Analysis as Box M test may make some errors and LDA performs a better classification.
+
+### 3.3.1 Quadratic Discriminant Analysis 
+
+#### 3.3.1.1 Introduction
+
+The next algorithms we will see are really similar, the biggest difference is that Linear Discriminant Analysis assumes that the different classes in the prediction all have the same covariance matrix.
+
+The next algorithm we will use is Quadratic Discriminant Analysis (QDA) which is highly related to the next algorithm Linear Discrimant Analysis. It as a supervised learning technique used for classification. QDA assumes that all classes follow a normal distribution they have a mean vector and a covariance matrix (different for each class), it provides a division of the data with a quadratic decision boundary.
+
+This algorithm has problems with really high dimensionality as it needs to estimate many vectors and covariance matrices. Moreover it is also really sensitive to deviations from Gaussian distribution, it is an unbiased estimator with a high variance.
+
+This problems will be tackled by linear discrimant analysis. Linear Discriminant Analysis assumes the same covariances for all classes therefore we will also test it afterwards
+
+Mathematically QDA is based on the Bayes Theorem which calculates the probability of an element belonging to an specific class, the mathematical formula estimates mean vectors, covariance matrices and prior probabilities.
+
+The formula is given by
+
+$$
+\delta_k(x) = -\frac{1}{2} \log |\Sigma_k| - \frac{1}{2} (x - \mu_k)^T \Sigma_k^{-1} (x - \mu_k) + \log P(y = k)
+$$
+
+The first term corresponds to the logarithm of the determinant of the covariance matrix, the logarithm appears due to the derivation from Gaussian distribution. The second term measures how far is x in relation to the mean multiplied by the covariance matrix, sometimes this matrix is not singular and therefore non invertible which is another problem. We want to minimize this first two terms as much as possible. Finally, the third term corresponds to the probability of an element y belonging to a class k.
+
+This function is computed for every observation and each point is assigned to the highest value obtained by the function.
+
+$$
+\hat{y} = \arg \max_k \delta_k(x)\
+$$
+
+#### 3.3.1.2 Training
+
+```{r}
+qda_model1 <- qda(SalePrice_Category ~ ., data_enc)
+print(qda_model1)
+```
+
+We can see that the prior probabilities for each of the classes is around 0.2 for each of the classes, basically equal chances of being assigned to each of the classes. Moreover, we can see the mean value obtained for each of the variables with respect to the classes. Variables such as Area and Quality have a higher value for Very High sale price and small values for low prices which makes sense.
+
+We will use cross validation and create a model based on the Quadratic Discriminant Analysis
+
+```{r}
+# Set up cross-validation
+train_control <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
+
+# Train the QDA model with cross-validation
+qda_model <- train(SalePrice_Category ~ ., data = data_enc, method = "qda", trControl = train_control)
+
+# Display the results
+print(qda_model)
+
+```
+
+We can see that the value obtained for accuracy is around 0.65 and around 0.55 for the kappa value which are good values and better than doing it by random chance but we could improve this values for sure.
+
+We will now compare with LDA and then jump to conclusions
+
+### 3.3.2 Linear Discriminant Analysis
+
+#### 3.3.2.1 Introduction
+
+We have already briefly introduced Linear Discriminant Analysis (LDA), it is also a supervised learning algorithm used for classification. It eliminates all the QDA problems, it does this by introducing some bias to reduce variance thereby having a lower prediction error. The division of data is done linearly
+
+Same as QDA, it assumes a normal distribution but the main difference and the main reason why problems such as really high dimensionality are solved is that it assumes are equal. This is because if there are K classes we wuold only need K-1 discriminant functions as one class could be inferred from others.
+
+$$
+\delta'_k(x) = \delta_k(x) - \delta_K(x)
+$$
+
+Moreover it estimates p+1 parameters (transformation of the original parameters) to make the discriminant function. In Big O notation this is O(p)
+
+But QDA has to estimate the mean for each parameter p, compute p(p+1)/2 covariance matrices and the probabilities. Which is why for a large p LDA will be more practical. In Big O notation this is O(p\^2)
+
+For classifying it follows the same procedure as QDA of the discriminant function. The biggest difference is just that it computes only one matrix. It will classify according to the highest value obtained.
+
+#### 3.3.2.2 Training
+
+```{r}
+lda_model1 <- lda(SalePrice_Category~., data_enc)
+print(lda_model1)
+```
+
+We can see in the output that the prior probabilities for each of the classes is around 0.2 for all of them. Apart from that we can also see the mean values for each class in the target variable. There are many negative values due to the normalization which has been done before. We can see that for example for the Very High Category, variables such as the area or the quality have high positive values whereas for the very low category this are negative.
+
+We can also see the coefficients of linear discriminant which could be used to obtain the discriminant function or for dimensionality reduction as LDA is also used in this area.
+
+Based on this output we do not see much difference to the QDA done before, they provide really similar values
+
+Now we will use cross validation to obtain the accuracy and kappa
+
+```{r}
+# Set up cross-validation
+train_control <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
+
+# Train the QDA model with cross-validation
+lda_model <- train(SalePrice_Category ~ ., data = data_enc, method = "lda", trControl = train_control)
+
+# Display the results
+print(lda_model)
+```
+
+The accuracy is of around 0.69 and a value of 0.61 for kappa which is an increase with respect to the previous result we obtained
+
+#### 3.3.2.3 Understanding
+
+The results obtained are surprising if we take BoxM test into consideration which returned a really low p value which indicated with great confidence that the covariance matrices were equal and this led us to believe that the results for QDA would be better.
+
+After training both models we saw that this in fact was not true as LDA returns a better result. This could be due to potential overfitting from QDA as it estimates a separate covariance matrix and it might fit noise in the data.
+
+Another possible option is that QDA is not regularized which is usually when the number of features is really high in relation to the number observations. Regular Discriminant Analysis offers a solution to this by reducing complexity and avoiding overfitting.
+
+#### 3.3.2.4 Regularized Discriminant Analysis
+
+Regularized Discriminant Analysis (RDA) is another version which could be used both for QDA and LDA.
+
+Its basic idea is that it includes a regularization term to prevent overfitting by shrinking the covariance matrices, if elements from different classes overlap changing this term will improve accuracy, this parameter is gamma and it helps shrink towards a more stable value. If its value is 0, no regularization is done. Its formula is given by:
+
+$$
+\Sigma_k^\text{reg} = (1 - \gamma) \Sigma_k + \gamma \Sigma_{\text{global}}
+$$
+
+The first term is the regularization with gamma times the covariance matrix for each class k and the regularization matrix times the pooled matrix (average of all the matrices)
+
+Apart from that, we can also regularize the mean vector with lambda, it applies a penalty to mean vectors towards 0 or a common mean. A value of 0 indicates no regularization. Its formula is given by:
+
+$$
+\mu_k^\gamma = (1 - \gamma) \hat{\mu}_k + \gamma \bar{x}
+$$
+
+Regularization times the mean vector for each class added to lambda times the mean vector of all the classes. All this results in the final formula given by:
+
+$$
+\delta_k(x) = \ln \pi_k - \frac{1}{2} \ln |\Sigma_k^\lambda| - \frac{1}{2} (x - \mu_k^\gamma)^T \Sigma_k^{\lambda^{-1}} (x - \mu_k^\gamma)
+$$
+
+Each point will be assigned according to the discriminant function which returns a higher value.
+
+In this code we could try many values for gamma and lambda, the complexity for this is 0(n\^n) as each value for lambda is tested with each value for gamma, therefore we chose a few numbers as it returns good values and does not take as much time.
+
+```{r}
+# Setting up cross-validation
+train_control <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
+
+# Defining a tuning grid for both gamma and lambda
+tune_grid <- expand.grid(gamma = seq(0, 1, by = 0.3), 
+                         lambda = seq(0, 1, by = 0.3))  
+
+# Training the regularized QDA model with cross-validation and tuning
+rda_model <- train(SalePrice_Category ~ ., data = data_enc, method = "rda", 
+                   trControl = train_control, tuneGrid = tune_grid)
+
+# Displaying the results
+print(rda_model$results)
+
+# Obtaining the best parameters
+best_result <- rda_model$results[which.max(rda_model$results$Accuracy), ]
+
+# Returning the results
+cat("Best Accuracy: ", best_result$Accuracy,"\n")
+cat("Best Gamma: ", best_result$gamma,"\n")
+cat("Best Lambda: ", best_result$lambda,"\n")
+```
+
+We can see that we obtained an accuracy of around 0.7 which is a clear improvement with respect to the previous QDA we performed and it obtains a greater accuracy than LDA. This supports the initial conclusion from the Box M test which stated different covariance matrices.
+
+#### 3.3.2.5 Visualization of Results
+
+We will know make some boxplots to create a visual representation of the results obtained.
+
+```{r}
+# Obtaining the performance metrics for all the different models
+rda_res <- rda_model$resample
+lda_res <- lda_model$resample
+qda_res <- qda_model$resample
+
+# Combining the results into one data frame
+resample_data <- rbind(
+  data.frame(Model = "RDA", Accuracy = rda_res$Accuracy),
+  data.frame(Model = "LDA", Accuracy = lda_res$Accuracy),
+  data.frame(Model = "QDA", Accuracy = qda_res$Accuracy)
+)
+
+# Plotting accuracy across folds
+ggplot(resample_data, aes(x = Model, y = Accuracy, color = Model)) +
+  geom_boxplot() +
+  labs(title = "Cross-Validation Accuracy Comparison", x = "Model", y = "Accuracy") +
+  theme_minimal()
+
+```
+
+The boxplots show that clearly the QDA has a wider spread and a lower median accuracy, however its value is really similar to the ones returned by the LDA. RDA seems to have bit better median and data the results are clearly as not as spread as the others. Its mean accuracy is fairly close to 0.7 which is not always the case for LDA and QDA which have mean values of around 0.67
+
+## 3.4 Naive Bayes
+
+## 3.5 Logistic Regression
+
+## 3.6 Support Vector Machines
+
+## 3.7 Random Forests
+
+## 3.8 Gradient Boosting
