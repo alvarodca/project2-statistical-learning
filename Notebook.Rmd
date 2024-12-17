@@ -13,15 +13,18 @@ rm(list = ls())
 set.seed(123)
 
 # List of required libraries
-required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree" ,"e1071", "bestNormalize","caret", "GGally", "corrplot", "rpart", "rpart.plot", "MASS","biotools", "klaR")
+required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree" ,"e1071", "bestNormalize","caret", "GGally", "corrplot", "rpart", "rpart.plot", "MASS","biotools", "klaR", "iml", "fastshap")
 
 # Install and load libraries
+suppressWarnings({ 
+
 for (lib in required_libraries) {
   if (!require(lib, character.only = TRUE)) {
     install.packages(lib, dependencies = TRUE)
     library(lib, character.only = TRUE)
   }
 }
+})
 ```
 
 We will start by importing the dataset and interpreting both its structure and content.
@@ -844,6 +847,8 @@ $$
 
 #### 3.3.1.2 Training
 
+We will start creating the different models
+
 ```{r}
 qda_model1 <- qda(SalePrice_Category ~ ., data_enc)
 print(qda_model1)
@@ -1004,7 +1009,8 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_rda, shape=SalePr
   geom_point(alpha = 0.7, size = 3) +
   labs(title = "RDA Predictions in 2D (PCA)", x = "Principal Component 1", y = "Principal Component 2") +
   theme_minimal() +
-  scale_color_manual(values = rainbow(length(unique(pca_data$Predicted_Class))))  # Customize colors for predicted classes
+  scale_color_manual(values = rainbow(length(unique(pca_data$Predicted_Class_rda))))  # Customize colors for predicted classes
+
 ```
 
 ## 3.4 Naive Bayes
@@ -1042,7 +1048,9 @@ We will firstly perform a small hyper-parameter tuning to optimize the model's r
 train_control <- trainControl(method = "cv", number = 10)
 
 # Train Naive Bayes with caret
+suppressWarnings({
 nb_model <- train(SalePrice_Category ~ ., data = data_enc, method = "nb", trControl = train_control, tuneGrid = expand.grid(fL = c(0, 0.5, 1), usekernel = c(TRUE, FALSE), adjust = c(1, 1.5)))
+})
 
 # View the model
 print(nb_model)
@@ -1070,14 +1078,18 @@ We will finally do a plot with PCA to compare the predicted class with the real 
 
 ```{r}
 # Predict on the training dataset
+suppressWarnings({
 predictions <- predict(nb_model, data_enc, type = "prob")
+})
 
 # Identify uncertain points
 uncertainty_threshold <- 0.6
 pca_data$Uncertain <- apply(predictions, 1, max) < uncertainty_threshold
 
 # Step 2: Add the predicted class labels to the PCA data
+suppressWarnings({
 pca_data$Predicted_Class_nb <- predict(nb_model, newdata = data_enc)
+})
 
 # Step 3: Update the ggplot visualization to highlight uncertain points
 ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_nb, shape = SalePrice_Category)) +
@@ -1092,6 +1104,121 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_nb, shape = SaleP
 We see in the plot that many of the "uncertain" points are in the boundary between classes. We also observe that many of these points are all over the middle, since as we have said all throughout the project, it is hard to classify the points in the middle, since a point with High price could be close to one with Low price. Furthermore, many of the points that are uncertain are wrongly classified.
 
 ## 3.5 Logistic Regression
+
+### 3.5.1 Introduction
+
+The next algorithm we will use is Logistic Regression, as logistic regression supports categorical data we will use the data without encoding.
+
+Logistic regression can be used for regression and classification, there are different types of Logistic Regression. These are Binary, Multinomial and Ordinal. Binary Logistic Regression has only two possible outcomes, Multinomial has more than two possible outcomes and Ordinal has more than two possible outcomes but with the difference that the possible outcomes have an order.
+
+In this project, we have divided the Price into Very Low, Low, Medium, High, Very High. Clearly, there is an ordering of the classes and there are more thant two classes, therefore the best logistic model will be Ordinal. Ordinal Logistic Regression is based on the previous models which we will briefly explain to obtain a general idea and then focus on our model.
+
+Logistc regression maps the different futures to probabilities using a sigmoid function to make sure the output is between 0 and 1. It calculates the sigmoid function with a combination of the different variables, which is similar to the regression model. This formula is given by:
+
+$$
+\pi(X) = P(Y = 1 \mid X) = \frac{1}{1 + e^{-z}}
+$$ Where: $$
+z = \beta_0 + \beta_1 X_1 + \beta_2 X_2 + \dots + \beta_n X_n
+$$
+
+After having all values between 0 and 1, we will use this probability to obtain the odds, which are the relation between the probability of success and failure.
+
+$$
+% Sigmoid Function\[\pi(X) = P(Y = 1 \mid X) = \frac{1}{1 + e^{-z}}\]
+Where:
+\[z = \beta_0 + \beta_1 X_1 + \beta_2 X_2 + \dots + \beta_n X_n\]
+$$$$\text{Odds} = \frac{\pi(X)}{1 - \pi(X)}$$
+
+But we want the relationship to be linear combination of the variables, based on the previous formula, if we apply the logarithm to get rid of the exponential we will obtain what we want $$\text{Logit}(\pi(X)) = \log\left( \frac{\pi(X)}{1 - \pi(X)} \right) = \beta_0 + \beta_1 X_1 + \beta_2 X_2 + \dots + \beta_n X_n$$
+
+Multinomial Logistic Regression uses the Softmax Function which is a generalization of the logistic function in more dimensions. It takes a vector of x numbers and normalizes it into a probability distribution. The output will return components in the interval (0,1) where the components add up to 1.
+
+Given by the formula:
+
+$$
+\pi_k(X) = \frac{\exp(\beta_{0,k} + \beta_1^T X)}{1 + \sum_{j=1}^{G-1} \exp(\beta_{0,j} + \beta_j^T X)}
+$$
+
+The groups (G) in Multinomial Linear Regression go from 0 to G-1 where the first group is the reference group y = 0, this could also be the last. The reference class does not have its own betas, it is represented in the denominator.The coefficients for the other groups show how the different variables are related to being in that outcome group versus the reference group. The choosing of this class is important as it affects the coefficients.
+
+Ordinal Logistic Regression has the same groups but they are ordered. We have the function which is a cumulative probability model which measures the probability of being in a category or higher based on the predictors X. The main difference is that its probabilities are derived from cumulative probabilities as each category has a threshold whereas Multinomial calculated them independently. The formula is given by
+
+$$
+\sum_{g=1}^{G^*} \rho_g = \frac{\exp(\beta_{0,g} + \beta^T X)}{1 + \exp(\beta_{0,g} + \beta^T X)}
+$$
+
+### 3.5.2 Training
+
+As explained before we have more than one class, therefore we will not be able to use binary logistic regression. The different groups here show a clear order. But on this project we want to try many different algorithms to understand and interpret them, therefore we will train both Multinomial and Ordinal Logistic regression.
+
+```{r}
+# Creating cross validation
+train_control <- trainControl(method = "cv", number = 10, verboseIter = FALSE)
+
+# Training the multinomial model with cross-validation
+multinomial_model <- train(SalePrice_Category ~ ., data = data_not_enc, method = "multinom", trControl = train_control, trace = FALSE)
+# Trace is added to avoid unnecesary output
+
+# Display the results
+print(multinomial_model)
+```
+
+In this output we see that the multinomial regression is regularized and it uses a decay to obtain better values. Same as seen on QDA, the regularization parameter prevents overfitting and fixes complexity.
+
+The accuracy obtained was of 0.69 and a kappa of 0.62 which is a good value and it is slightly better than the models we have seen till now.
+
+We will know use Ordinal Logistic Regression, we will focus more on this model as at first hand it will return the best values
+
+```{r}
+ordinal_model1 <- polr(SalePrice_Category ~ ., data = data_not_enc, Hess = TRUE)
+
+## view a summary of the model
+summary(ordinal_model1)
+```
+
+In this first output we obtain the coefficients with the standard error and t statistic. This value is also done on the different Sale Prices Categories, it compares the log odds of being in a category respect to the reference category. For example, High/Very High is the odds of being in the High category compared to being in the Very High category.
+
+Residual variance is a measure of how well the data is fitted by the model, we want this number to be as low as possible. This number may be useful in the future if we compare the residual variance to other models in order to determine the best model.
+
+The AIC is a measure of the quality of the model, the lower the better.
+
+Making the model with cross validation, it already applies regularization
+
+```{r}
+# Creating cross validation
+train_control <- trainControl(
+  method = "cv",
+  number = 5
+)
+# Training the multinomial model with cross-validation
+suppressWarnings({
+ordinal_model <- train(SalePrice_Category ~ ., data = data_enc, method = "polr", trControl = train_control)
+})
+
+
+# Display the results
+print(ordinal_model)
+# summary(ordinal_model)
+```
+
+We see that there are 5 different link models which use different methods and functions to determine the cumulative properties of the response variables. Ech of these methods behave better depending on the distribution of data, in our case we expect Probit to be the mest method as it assumes a normal distribution. However we see that all methods return really similar values which means they perform really well.
+
+As expected, we obtained a higher value than Multinomial regression, we obtained an accuracy of around 0.727 and a kappa of 0.66 which shows improvement from previous models
+
+### 3.5.3 Understanding
+
+Following the same procedure as with other algorithms, we will now use PCA to obtain a rep
+
+```{r}
+pca_data$Predicted_Class_olr <- predict(ordinal_model, newdata = data_enc)
+
+# Visualize the PCA result with predicted class labels
+ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_olr, shape=SalePrice_Category)) +
+  geom_point(alpha = 0.7, size = 3) +
+  labs(title = "RDA Predictions in 2D (PCA)", x = "Principal Component 1", y = "Principal Component 2") +
+  theme_minimal() +
+  scale_color_manual(values = rainbow(length(unique(pca_data$Predicted_Class_olr))))  # Customize colors for predicted classes
+```
 
 ## 3.6 Support Vector Machines
 
@@ -1168,8 +1295,63 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_SVM, shape=SalePr
 
 Yet again we see the same trend, of difficulty classifying the middle classes, but there is a difference. In this case the class "Medium" has been mostly classified correctly compared with other models. We also observe that overall the classes have been classified correctly for the most part, hence the high accuracy.
 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! HAVE TO DO SHAP !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
 ## 3.7 Random Forests
+
+### 3.7.1 Introduction
+
+The next algorithm we will see are Random Forests.Random Forest are constructed with many decision trees which were explained previously, they combine bagging and random feature selection to obtain a model.
+
+Firstly, it draws x bootstrap samples of size n, there is a decision tree for each bootstrap sample. There is a random set of features chosen at each node and the best feature to split on the node is chosen. As our focus is on classification, random forests will select the most popular vote over all the trees to obtain the final prediction.
+
+They are hard to interpret but in exchange they are very accurate and they reduce variance and overfitting.
+
+### 3.7.2 Training
+
+Creating the random forest model
+
+Random forests have parameters such as ntree which correspons to the number of trees created and mtry which corresponds to the number of features selected at each split node. These are some parameters amongs others which could affect the accuracy of the model.
+
+```{r}
+# Set up train control for cross-validation
+train_control <- trainControl(method = "cv", number = 10)  # 5-fold cross-validation
+
+# Train SVM with a linear kernel
+rf_model <- train(SalePrice_Category ~ ., 
+                          data = data_enc, 
+                          method = "rf", 
+                          ntree = 500,
+                          tuneGrid = expand.grid(mtry=c(3,4,5)),
+                          maximize = T,
+                          trControl = train_control)  
+
+# Print the results
+print(rf_model)
+```
+
+After
+
+### 3.7.3 Understanding
+
+Obtaining a feature importance plot, the different variables are classified according to the Gini index from the decision trees
+
+```{r}
+rf_imp <- varImp(rf_model, scale = F)
+plot(rf_imp, scales = list(y = list(cex = .95)))
+```
+
+On the one hand,clearly the most relevant features are related with area and quality, neighborhood also seems to be pretty significant. At the end, the larger the area and the bigger the house the higher the price and vice versa .On the other hand, variables such as Fireplaces and OverallCond are not as important.
+
+We will now use pca to plot the classification
+
+```{r}
+pca_data$Predicted_Class_rf <- predict(rf_model, newdata = data_enc)
+
+# Visualize the PCA result with predicted class labels
+ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_rf, shape=SalePrice_Category)) +
+  geom_point(alpha = 0.7, size = 3) +
+  labs(title = "RDA Predictions in 2D (PCA)", x = "Principal Component 1", y = "Principal Component 2") +
+  theme_minimal() +
+  scale_color_manual(values = rainbow(length(unique(pca_data$Predicted_Class_rf))))  # Customize colors for predicted classes
+```
 
 ## 3.8 Gradient Boosting
