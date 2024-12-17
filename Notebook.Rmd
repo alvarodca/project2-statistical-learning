@@ -13,7 +13,7 @@ rm(list = ls())
 set.seed(123)
 
 # List of required libraries
-required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree" ,"e1071", "bestNormalize","caret", "GGally", "corrplot", "rpart", "rpart.plot", "MASS","kraL","biotools")
+required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree" ,"e1071", "bestNormalize","caret", "GGally", "corrplot", "rpart", "rpart.plot", "MASS","biotools", "klaR")
 
 # Install and load libraries
 for (lib in required_libraries) {
@@ -782,35 +782,31 @@ pca_result <- prcomp(data_enc[, -which(names(data_enc) == "SalePrice_Category")]
 pca_data <- data.frame(pca_result$x[, 1:2])  # First two PCs
 pca_data$SalePrice_Category <- data_enc$SalePrice_Category  # Add class labels back to the data for visualization
 # Get predicted class labels using the trained KNN model
-pca_data$Predicted_Class <- predict(final_knn, newdata = data_enc)
+pca_data$Predicted_Class_kNN <- predict(final_knn, newdata = data_enc)
 
 # Visualize the PCA result with predicted class labels
-ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class, shape=SalePrice_Category)) +
+ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_kNN, shape=SalePrice_Category)) +
   geom_point(alpha = 0.7, size = 3) +
   labs(title = "KNN Predictions in 2D (PCA)", x = "Principal Component 1", y = "Principal Component 2") +
   theme_minimal() +
-  scale_color_manual(values = rainbow(length(unique(pca_data$Predicted_Class))))  # Customize colors for predicted classes
-
-
+  scale_color_manual(values = rainbow(length(unique(pca_data$Predicted_Class_kNN))))  # Customize colors for predicted classes
 ```
 
 We observe that most of the points in the class Very High have been classified correctly. We also see how Very Low has mostly been classified correctly, although there are more errors. On the other hand, the model struggles to distinguish between the 3 middle classes, which could be due to many factors, but one of them might be because the classification may be non-linear. To solve this we could use another type of distance in the k-NN such as Mahalanobis, or we could apply the kernel trick. Although these options might better the prediction slightly, we do not think that they would make the model perform much better, since the errors appear to be specific flaws of the k-NN algorithm itself. Instead, what we will do is focus more on the other models that might capture better this complexity of the data.
 
 ## 3.3 Quadratic Discriminant Analysis and Linear Discrimant Analysis
 
-The next algorithms we will see are really similar, the biggest difference is that Linear Discriminant Analysis assumes that the different classes in the prediction all have the same covariance matrix.
+The next algorithms we will see are really similar, the biggest difference is that Linear Discriminant Analysis assumes that the different classes in the prediction all have the same covariance matrix. This is a really big difference, which could potentialy be one of the reasons why we chose one process over the other.
 
-This is a really big difference which could potentialy be one of the reasons why we chose one process or the other.
+To see if the covariance matrices are the same or not we will use Box's M Test which tests if two or more covariance matrices are equal or not. This test assumes normality from the data if not it could have many errors.
 
-To see if the covariance matrices are the same or not we will use Box\`s M Test which tests if two or more covariance matrices are equal or not. This test assumes normality from the data if not it could have many errors
-
-The null hypothesis for this test states that the covariance matrices are equal, a really high p value indicates that this is true. We will use the library biotools that will perform this test.It compares the product of log determinants of the matrices to the log determinant of a pooled matrix (average of all the matrices), it hten uses a chi squared approximation for the result. It is based on the formula:
+The null hypothesis for this test states that the covariance matrices are equal, a really high p value indicates that this is true. We will use the library biotools that will perform this test. It compares the product of log determinants of the matrices to the log determinant of a pooled matrix (average of all the matrices), it then uses a chi squared approximation for the result. It is based on the following formula:
 
 $$
 M = \frac{n - k}{k \cdot (n - 1)} \sum_{i=1}^{k} (n_i - 1) \cdot \log \left( \det(\Sigma_i) \right) - \sum_{i=1}^{k} (n_i - 1) \cdot \log \left( \det(\Sigma) \right)
 $$
 
-Where n is the number of observations, k the number of classes ∑i is each covariance matrix, and finally the pooled matrix
+Where $n$ is the number of observations, $k$ the number of classes, $\Sigma_i$ each covariance matrix, and finally the pooled matrix.
 
 ```{r}
 boxM_test <- boxM(data_enc[,-which(names(data_enc) == "SalePrice_Category")],
@@ -818,19 +814,17 @@ boxM_test <- boxM(data_enc[,-which(names(data_enc) == "SalePrice_Category")],
 print(boxM_test)
 ```
 
-This test clearly suggest that the covariance matrices are different therefore Quadratic Discrimant Analysis will more likely be better in our dataset. However, in this project we are covering many different supervised learning algorithms to study and understand them. This is why we will also cover Linear Discriminant Analysis as Box M test may make some errors and LDA performs a better classification.
+This test clearly suggest that the covariance matrices are different therefore Quadratic Discrimant Analysis will more likely be better in our dataset. However, in this project we are covering many different supervised learning algorithms to study and understand them. This is why we will also cover Linear Discriminant Analysis, as Box M test may make some errors, and LDA could provide a similar classification while being less computationally expensive.
 
-### 3.3.1 Quadratic Discriminant Analysis 
+### 3.3.1 Quadratic Discriminant Analysis
 
 #### 3.3.1.1 Introduction
 
-The next algorithms we will see are really similar, the biggest difference is that Linear Discriminant Analysis assumes that the different classes in the prediction all have the same covariance matrix.
+The next algorithms we will see are really similar, the biggest difference is that Linear Discriminant Analysis assumes that the different classes in the prediction all have the same covariance matrix just as we said before.
 
-The next algorithm we will use is Quadratic Discriminant Analysis (QDA) which is highly related to the next algorithm Linear Discrimant Analysis. It as a supervised learning technique used for classification. QDA assumes that all classes follow a normal distribution they have a mean vector and a covariance matrix (different for each class), it provides a division of the data with a quadratic decision boundary.
+The first algorithm we will use is Quadratic Discriminant Analysis (QDA) which is highly related to the next algorithm Linear Discrimant Analysis (LDA). It is a supervised learning technique used for classification. QDA assumes that all classes follow a normal distribution they have a mean vector and a covariance matrix (different for each class), it provides a division of the data with a quadratic decision boundary.
 
-This algorithm has problems with really high dimensionality as it needs to estimate many vectors and covariance matrices. Moreover it is also really sensitive to deviations from Gaussian distribution, it is an unbiased estimator with a high variance.
-
-This problems will be tackled by linear discrimant analysis. Linear Discriminant Analysis assumes the same covariances for all classes therefore we will also test it afterwards
+This algorithm has problems with really high dimensionality as it needs to estimate many vectors and covariance matrices. Moreover it is also really sensitive to deviations from Gaussian distribution. It is an unbiased estimator with a high variance. This problems will be tackled by LDA, which assumes the same covariances for all classes therefore we will also test it afterwards
 
 Mathematically QDA is based on the Bayes Theorem which calculates the probability of an element belonging to an specific class, the mathematical formula estimates mean vectors, covariance matrices and prior probabilities.
 
@@ -840,9 +834,9 @@ $$
 \delta_k(x) = -\frac{1}{2} \log |\Sigma_k| - \frac{1}{2} (x - \mu_k)^T \Sigma_k^{-1} (x - \mu_k) + \log P(y = k)
 $$
 
-The first term corresponds to the logarithm of the determinant of the covariance matrix, the logarithm appears due to the derivation from Gaussian distribution. The second term measures how far is x in relation to the mean multiplied by the covariance matrix, sometimes this matrix is not singular and therefore non invertible which is another problem. We want to minimize this first two terms as much as possible. Finally, the third term corresponds to the probability of an element y belonging to a class k.
+The first term corresponds to the logarithm of the determinant of the covariance matrix, the logarithm appears due to the derivation from Gaussian distribution. The second term measures how far is $x$ in relation to the mean multiplied by the covariance matrix, sometimes this matrix is not singular and therefore non invertible which is another problem. We want to minimize this first two terms as much as possible. Finally, the third term corresponds to the probability of an element y belonging to a class k.
 
-This function is computed for every observation and each point is assigned to the highest value obtained by the function.
+This function is computed for every observation and each point is assigned to the highest value obtained by the function:
 
 $$
 \hat{y} = \arg \max_k \delta_k(x)\
@@ -879,17 +873,15 @@ We will now compare with LDA and then jump to conclusions
 
 #### 3.3.2.1 Introduction
 
-We have already briefly introduced Linear Discriminant Analysis (LDA), it is also a supervised learning algorithm used for classification. It eliminates all the QDA problems, it does this by introducing some bias to reduce variance thereby having a lower prediction error. The division of data is done linearly
+We have already briefly introduced Linear Discriminant Analysis (LDA), it is also a supervised learning algorithm used for classification. It eliminates some of the QDA problems, it does this by introducing some bias to reduce variance thereby having a lower prediction error. The division of data is done linearly.
 
-Same as QDA, it assumes a normal distribution but the main difference and the main reason why problems such as really high dimensionality are solved is that it assumes are equal. This is because if there are K classes we wuold only need K-1 discriminant functions as one class could be inferred from others.
+Same as QDA, it assumes a normal distribution but the main difference and the main reason why problems such as really high dimensionality are solved is that it assumes are equal. This is because if there are K classes we would only need K-1 discriminant functions as one class could be inferred from others.
 
 $$
 \delta'_k(x) = \delta_k(x) - \delta_K(x)
 $$
 
-Moreover it estimates p+1 parameters (transformation of the original parameters) to make the discriminant function. In Big O notation this is O(p)
-
-But QDA has to estimate the mean for each parameter p, compute p(p+1)/2 covariance matrices and the probabilities. Which is why for a large p LDA will be more practical. In Big O notation this is O(p\^2)
+Moreover it estimates p+1 parameters (transformation of the original parameters) to make the discriminant function. In Big O notation this is $O(p)$. But QDA has to estimate the mean for each parameter $p$, compute $\dfrac{p(p+1)}{2}$ covariance matrices and the probabilities. Which is why for a large $p$ LDA will be more practical. In Big O notation this is $O(p^2)$.
 
 For classifying it follows the same procedure as QDA of the discriminant function. The biggest difference is just that it computes only one matrix. It will classify according to the highest value obtained.
 
@@ -902,11 +894,9 @@ print(lda_model1)
 
 We can see in the output that the prior probabilities for each of the classes is around 0.2 for all of them. Apart from that we can also see the mean values for each class in the target variable. There are many negative values due to the normalization which has been done before. We can see that for example for the Very High Category, variables such as the area or the quality have high positive values whereas for the very low category this are negative.
 
-We can also see the coefficients of linear discriminant which could be used to obtain the discriminant function or for dimensionality reduction as LDA is also used in this area.
+We can also see the coefficients of linear discriminant which could be used to obtain the discriminant function or for dimensionality reduction as LDA is also used in this area. Based on this output we do not see much difference to the QDA done before, they provide really similar values
 
-Based on this output we do not see much difference to the QDA done before, they provide really similar values
-
-Now we will use cross validation to obtain the accuracy and kappa
+Now we will use cross validation to obtain the accuracy and kappa.
 
 ```{r}
 # Set up cross-validation
@@ -923,7 +913,7 @@ The accuracy is of around 0.69 and a value of 0.61 for kappa which is an increas
 
 #### 3.3.2.3 Understanding
 
-The results obtained are surprising if we take BoxM test into consideration which returned a really low p value which indicated with great confidence that the covariance matrices were equal and this led us to believe that the results for QDA would be better.
+The results obtained are surprising if we take Box's M test into consideration which returned a really low p value which indicated with great confidence that the covariance matrices were equal and this led us to believe that the results for QDA would be better.
 
 After training both models we saw that this in fact was not true as LDA returns a better result. This could be due to potential overfitting from QDA as it estimates a separate covariance matrix and it might fit noise in the data.
 
@@ -931,17 +921,13 @@ Another possible option is that QDA is not regularized which is usually when the
 
 #### 3.3.2.4 Regularized Discriminant Analysis
 
-Regularized Discriminant Analysis (RDA) is another version which could be used both for QDA and LDA.
-
-Its basic idea is that it includes a regularization term to prevent overfitting by shrinking the covariance matrices, if elements from different classes overlap changing this term will improve accuracy, this parameter is gamma and it helps shrink towards a more stable value. If its value is 0, no regularization is done. Its formula is given by:
+Regularized Discriminant Analysis (RDA) is another version which could be used both for QDA and LDA. Its main idea is that it includes a regularization term to prevent overfitting by shrinking the covariance matrices, if elements from different classes overlap changing this term will improve accuracy, this parameter is gamma and it helps shrink towards a more stable value. If its value is 0, no regularization is done. Its formula is given by:
 
 $$
 \Sigma_k^\text{reg} = (1 - \gamma) \Sigma_k + \gamma \Sigma_{\text{global}}
 $$
 
-The first term is the regularization with gamma times the covariance matrix for each class k and the regularization matrix times the pooled matrix (average of all the matrices)
-
-Apart from that, we can also regularize the mean vector with lambda, it applies a penalty to mean vectors towards 0 or a common mean. A value of 0 indicates no regularization. Its formula is given by:
+The first term is the regularization with gamma times the covariance matrix for each class $k$ and the regularization matrix times the pooled matrix (average of all the matrices). Apart from that, we can also regularize the mean vector with $\lambda$, it applies a penalty to mean vectors towards 0 or a common mean. A value of 0 indicates no regularization. Its formula is given by:
 
 $$
 \mu_k^\gamma = (1 - \gamma) \hat{\mu}_k + \gamma \bar{x}
@@ -955,7 +941,7 @@ $$
 
 Each point will be assigned according to the discriminant function which returns a higher value.
 
-In this code we could try many values for gamma and lambda, the complexity for this is 0(n\^n) as each value for lambda is tested with each value for gamma, therefore we chose a few numbers as it returns good values and does not take as much time.
+In this code we could try many values for gamma and lambda, the complexity for this is $O(n^n)$as each value for lambda is tested with each value for gamma, therefore we chose a few numbers as it returns good values and does not take as much time.
 
 ```{r}
 # Setting up cross-validation
@@ -1010,11 +996,179 @@ ggplot(resample_data, aes(x = Model, y = Accuracy, color = Model)) +
 
 The boxplots show that clearly the QDA has a wider spread and a lower median accuracy, however its value is really similar to the ones returned by the LDA. RDA seems to have bit better median and data the results are clearly as not as spread as the others. Its mean accuracy is fairly close to 0.7 which is not always the case for LDA and QDA which have mean values of around 0.67
 
+```{r}
+pca_data$Predicted_Class_rda <- predict(rda_model, newdata = data_enc)
+
+# Visualize the PCA result with predicted class labels
+ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_rda, shape=SalePrice_Category)) +
+  geom_point(alpha = 0.7, size = 3) +
+  labs(title = "RDA Predictions in 2D (PCA)", x = "Principal Component 1", y = "Principal Component 2") +
+  theme_minimal() +
+  scale_color_manual(values = rainbow(length(unique(pca_data$Predicted_Class))))  # Customize colors for predicted classes
+```
+
 ## 3.4 Naive Bayes
+
+### 3.4.1 Introduction
+
+Naive Bayes is a conditional probability model based on the Bayes theorem. It assigns a probability that an observation $\mathbf{x}$ belongs to each possible class $C_k$. Mathematically:
+
+$$
+p(C_k\mid\mathbf{x})=\dfrac{p(C_k)p(\mathbf{x}\mid C_k)}{p(\mathbf{x})}
+$$
+
+Where $k$ is the number possible classes, and the vector $\mathbf{x}$ has $n$ features. In the end, the classifier decides the class based on the one that has the higher posterior probability. We then end up with the following prediction $\hat{y}$ :
+
+$$
+\hat{y} = \underset{k \in \{1, \dots, K\}}{\operatorname{argmax}} \ p(C_k) \prod_{i=1}^n p(x_i \mid C_k).
+$$
+
+Since we are mostly dealing with continuous data, and after the scaling and transformation, we will use Gaussian Naive Bayes. For this model we assume each class follows a normal distribution. Then, suppose observation value $v$, the probability density of it being in $C_k$ is computed as follows (based on the normal distribution):
+
+$$
+p(x = v \mid C_k) = \frac{1}{\sqrt{2\pi \sigma_k^2}} \, e^{-\frac{(v - \mu_k)^2}{2\sigma_k^2}}
+$$
+
+Where $\mu_k$ and $\sigma_k^2$ represent the mean and variance of the feature values in the class $C_k$.
+
+Although it is a somewhat simple kind of model, it is good to try it before moving to more fancy methods. Furthermore, since the outputs are probabilities we can obtain valuable interpretations from it.
+
+### 3.4.2 Training
+
+We will firstly perform a small hyper-parameter tuning to optimize the model's results, while measuring how well it performs with a 10 fold cross-validation.
+
+```{r}
+# Define the trainControl object for cross-validation
+train_control <- trainControl(method = "cv", number = 10)
+
+# Train Naive Bayes with caret
+nb_model <- train(SalePrice_Category ~ ., data = data_enc, method = "nb", trControl = train_control, tuneGrid = expand.grid(fL = c(0, 0.5, 1), usekernel = c(TRUE, FALSE), adjust = c(1, 1.5)))
+
+# View the model
+print(nb_model)
+```
+
+We observe that the best model has a 65% accuracy and a Kappa of 0.56 which has been very common in different algorithms throughout this project. This can be due to many reasons, but again there are inherent problems with the model and our data.
+
+Firstly, each class is assumed to be normally distributed, and although we have scaled and transformed the data, we could observe how the middle class is normally distributed while maybe the "Very High" class is skewed. Moreover, we also assume independence between each class which is not correct, since for example the overall quality (OverallQual) and exterior quality (ExterQual) are clearly related, we observed this in the correlation plots we did right at the start.
+
+### 3.4.3 Understanding
+
+Now we will move to the interpretation of the predictions. Here we print the mean and standard deviation for each class and feature. We would expect an increase or decrease in the mean as the price gets higher, while the standard deviation stays the same.
+
+```{r}
+# Train model with klaR to extract probabilities
+nb_model_klar <- NaiveBayes(SalePrice_Category ~ ., data = data_enc)
+
+# View conditional probabilities for features
+nb_model_klar$tables
+```
+
+Although our initial guess might be correct at first we observe different cases where the means do not follow the suggested order, like in MSSubClass or OverallCond. Furthermore we see that there is a very noticeable gap in means between Very Low, Very High and the rest, while the middle 3 classes sometimes do not follow the order we discussed before, and they have really similar mean. This combined with the standard deviations, which are moreless the same for each class, makes the 3 middle classes very likely to be predicted wrong, just as we saw with each previous model.
+
+We will finally do a plot with PCA to compare the predicted class with the real one. We will also highlight the points where the posterior probability for the predicted class has been less than 0.6, since they should be uncertain points for the model, which could be between classes.
+
+```{r}
+# Predict on the training dataset
+predictions <- predict(nb_model, data_enc, type = "prob")
+
+# Identify uncertain points
+uncertainty_threshold <- 0.6
+pca_data$Uncertain <- apply(predictions, 1, max) < uncertainty_threshold
+
+# Step 2: Add the predicted class labels to the PCA data
+pca_data$Predicted_Class_nb <- predict(nb_model, newdata = data_enc)
+
+# Step 3: Update the ggplot visualization to highlight uncertain points
+ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_nb, shape = SalePrice_Category)) +
+  geom_point(aes(size = !Uncertain), alpha = 0.7) +
+  scale_size_manual(values = c(`TRUE` = 1, `FALSE` = 5), guide = "none") +
+  labs(title = "Naive Bayes Predictions in 2D (PCA)", x = "Principal Component 1", y = "Principal Component 2") +
+  theme_minimal() +
+  scale_color_manual(values = rainbow(length(unique(pca_data$Predicted_Class_nb))))  # Customize colors for predicted classes
+
+```
+
+We see in the plot that many of the "uncertain" points are in the boundary between classes. We also observe that many of these points are all over the middle, since as we have said all throughout the project, it is hard to classify the points in the middle, since a point with High price could be close to one with Low price. Furthermore, many of the points that are uncertain are wrongly classified.
 
 ## 3.5 Logistic Regression
 
 ## 3.6 Support Vector Machines
+
+### 3.6.1 Introduction
+
+The next algorithm we will use is SVMs. They are a model that has many applications, but one of the most common is for supervised classification. Its main idea in plain English is to create a hyper-plane that divides each class while maximizing the margin between this hyper-plane and the two classes. Since the classes are not always separable like this, we use the hinge loss function to penalize misclassication. Mathematically:
+
+$$
+\mathcal{L}_i = max(0, 1-y_i(\mathbf{w}^T\mathbf{x_i}-b))
+$$
+
+Where $\mathbf{w}$ are the weights of the hyper-plane, $x_i$ the features of the observation $i$, $b$ the intercept of the hyper-plane and $y_i$ the target for that observation. With this we see, that when $\mathbf{w}^T\mathbf{x_i}-b$ is very big and has the opposite sign of $y_i$ the loss becomes really big. We then have the following minimization problem:
+
+$$
+\min_{\mathbf{w}, b} \, C \sum_{i=1}^n \mathcal{L}_i + \frac{1}{2} \mathbf{w}^T \mathbf{w}
+$$
+
+Where $C$ is a hyper-parameter that regulates the trade-off between maximizing the margin and minimizing the hinge loss. This formula maximizes the wideness of the margin, which is given by $\dfrac{2}{\mathbf{w}^T\mathbf{w}}$, while also minimizing the loss function $\mathcal{L}$.
+
+This is a very powerful algorithm, but due to its complexity its use case is for small to medium size datasets which is exactly what we have. Therefore we expect a high improvement in accuracy.
+
+### 3.6.2 Training
+
+We will first use Linear SVM before moving to more complex methods, which assumes that the classes are linearly separable.
+
+```{r}
+# Set up train control for cross-validation
+train_control <- trainControl(method = "cv", number = 5)  # 5-fold cross-validation
+
+# Train SVM with a linear kernel
+svm_linear_model <- train(SalePrice_Category ~ ., 
+                          data = data_enc, 
+                          method = "svmLinear", 
+                          trControl = train_control)  # Scale the features
+
+# Print the results
+print(svm_linear_model)
+```
+
+As we expected there is a higher accuracy (70%) and kappa (0.63) compared to the previous models. But we know this can be improved, the following way. Before we said that Linear SVM assumes the data is linearly separable but this is not always the case. To solve this, we use the Kernel SVM that augments the dimensionality of the data with a Kernel function in order to do non-linear classification. The kernel function we will use is Gaussian RBF, since is one of the most common and versatile ones. We will also perform a small hyper-parameter tuning to optimize the results further.
+
+```{r}
+# Define a grid of hyperparameters to tune
+grid <- expand.grid(C = seq(0.7, 2.5, by = 0.1), sigma = seq(0.01, 0.1, by = 0.01))
+
+# Train SVM with grid search
+svm_kernel <- train(SalePrice_Category ~ ., 
+                    data = data_enc, 
+                    method = "svmRadial", 
+                    trControl = train_control, 
+                    tuneGrid = grid)
+
+# Print the best model
+print(svm_kernel)
+```
+
+After this implementation of SVMs and the hyper-parameter tuning, we get a 73% accuracy and 0.66 kappa which is the highes yet for any model. This is a slight improvement over the Linear SVM model we trained before too.
+
+### 3.6.3 Understanding
+
+SVMs are black-box models, meaning that it is difficult to know how the predictions have been done, and therefore interpret our results. Because of this we will use the common plot that we have been doing all over the project to observe how the predictions compare to the real values.
+
+```{r}
+# Get predicted class labels using the trained KNN model
+pca_data$Predicted_Class_SVM <- predict(svm_kernel, newdata = data_enc)
+
+# Visualize the PCA result with predicted class labels
+ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_SVM, shape=SalePrice_Category)) +
+  geom_point(alpha = 0.7, size = 3) +
+  labs(title = "SVM Predictions in 2D (PCA)", x = "Principal Component 1", y = "Principal Component 2") +
+  theme_minimal() +
+  scale_color_manual(values = rainbow(length(unique(pca_data$Predicted_Class_SVM))))  # Customize colors for predicted classes
+```
+
+Yet again we see the same trend, of difficulty classifying the middle classes, but there is a difference. In this case the class "Medium" has been mostly classified correctly compared with other models. We also observe that overall the classes have been classified correctly for the most part, hence the high accuracy.
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! HAVE TO DO SHAP !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 ## 3.7 Random Forests
 
