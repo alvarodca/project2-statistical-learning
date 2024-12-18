@@ -13,7 +13,7 @@ rm(list = ls())
 set.seed(123)
 
 # List of required libraries
-required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree" ,"e1071", "bestNormalize","caret", "GGally", "corrplot", "rpart", "rpart.plot", "MASS","biotools", "klaR", "iml", "fastshap","randomForest")
+required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree" ,"e1071", "bestNormalize","caret", "GGally", "corrplot", "rpart", "rpart.plot", "MASS","biotools", "klaR", "iml", "fastshap","randomForest", "gbm", "xgboost")
 
 # Install and load libraries
 suppressWarnings({ 
@@ -725,7 +725,7 @@ final_dt <- cv_model$finalModel
 
 We see a 57% accuracy, which is not bad but there is room for improvement. Also we obtain a 0.47 Kappa value, which indicates a moderate agreement between the model's predictions and true labels.
 
-### 3.1.3 Understanding
+### 3.1.3 Interpretation
 
 Now, we can plot the decision tree so that we can understand how the predictions are done.
 
@@ -767,7 +767,7 @@ knn_model <- train(SalePrice_Category ~ ., data = data_enc, method = "knn", trCo
 print(knn_model)
 ```
 
-### 3.2.3 Understanding
+### 3.2.3 Interpretation
 
 We see that the optimal $k$, is 6 as it yields approximately a 66% accuracy and a kappa of 0.58. To visualize this model, we will train it on the whole dataset and perform PCA to visualize the classification in 2 dimensions.
 
@@ -916,7 +916,7 @@ print(lda_model)
 
 The accuracy is of around 0.69 and a value of 0.61 for kappa which is an increase with respect to the previous result we obtained
 
-#### 3.3.2.3 Understanding
+#### 3.3.2.3 Interpretation
 
 The results obtained are surprising if we take Box's M test into consideration which returned a really low p value which indicated with great confidence that the covariance matrices were equal and this led us to believe that the results for QDA would be better.
 
@@ -1060,7 +1060,7 @@ We observe that the best model has a 65% accuracy and a Kappa of 0.56 which has 
 
 Firstly, each class is assumed to be normally distributed, and although we have scaled and transformed the data, we could observe how the middle class is normally distributed while maybe the "Very High" class is skewed. Moreover, we also assume independence between each class which is not correct, since for example the overall quality (OverallQual) and exterior quality (ExterQual) are clearly related, we observed this in the correlation plots we did right at the start.
 
-### 3.4.3 Understanding
+### 3.4.3 Interpretation
 
 Now we will move to the interpretation of the predictions. Here we print the mean and standard deviation for each class and feature. We would expect an increase or decrease in the mean as the price gets higher, while the standard deviation stays the same.
 
@@ -1107,9 +1107,7 @@ We see in the plot that many of the "uncertain" points are in the boundary betwe
 
 ### 3.5.1 Introduction
 
-The next algorithm we will use is Logistic Regression.
-
-Logistic regression can be used for regression and classification, there are different types of Logistic Regression. These are Binary, Multinomial and Ordinal. Binary Logistic Regression has only two possible outcomes, Multinomial has more than two possible outcomes and Ordinal has more than two possible outcomes but with the difference that the possible outcomes have an order.
+The next algorithm we will use is Logistic Regression. Logistic regression can be used for regression and classification, and there are different types of Logistic Regression. For classification, these are Binary, Multinomial and Ordinal. Binary Logistic Regression has only two possible outcomes, Multinomial has more than two possible outcomes and Ordinal has more than two possible outcomes but with the difference that the possible outcomes have an order.
 
 In this project, we have divided the Price into Very Low, Low, Medium, High, Very High. Clearly, there is an ordering of the classes and there are more than two classes, therefore the best logistic model will be Ordinal. Ordinal Logistic Regression's idea is based on the previous models which we will briefly explain to obtain a general view and then focus on our model.
 
@@ -1131,17 +1129,15 @@ $$$$\text{Odds} = \frac{\pi(X)}{1 - \pi(X)}$$
 
 But we want the relationship to be linear combination of the variables, based on the previous formula, if we apply the logarithm to get rid of the exponential we will obtain what we want $$\text{Logit}(\pi(X)) = \log\left( \frac{\pi(X)}{1 - \pi(X)} \right) = \beta_0 + \beta_1 X_1 + \beta_2 X_2 + \dots + \beta_n X_n$$
 
-Multinomial Logistic Regression uses the Softmax Function which is a generalization of the logistic function in more dimensions. It takes a vector of x numbers and normalizes it into a probability distribution. The output will return components in the interval (0,1) where the components add up to 1.
-
-Given by the formula:
+Multinomial Logistic Regression uses the Softmax Function which is a generalization of the logistic function in more dimensions. It takes a vector of x numbers and normalizes it into a probability distribution. The output will return components in the interval (0,1) where the components add up to 1. Given by the formula:
 
 $$
 \pi_k(X) = \frac{\exp(\beta_{0,k} + \beta_1^T X)}{1 + \sum_{j=1}^{G-1} \exp(\beta_{0,j} + \beta_j^T X)}
 $$
 
-The groups (G) in Multinomial Linear Regression go from 0 to G-1 where the first group is the reference group y = 0, this could also be the last. The reference class does not have its own betas, it is represented in the denominator. The coefficients for the other groups show how the different variables are related to being in that outcome group versus the reference group. The choosing of this class is important as it affects the coefficients.
+The groups, $G$ , in Multinomial Linear Regression go from 0 to $G-1$ where the first group is the reference group $y$ = 0, this could also be the last. The reference class does not have its own betas, it is represented in the denominator. The coefficients for the other groups show how the different variables are related to being in that outcome group versus the reference group. The choosing of this class is important as it affects the coefficients.
 
-Ordinal Logistic Regression has the same groups but they are ordered. We have the function which is a cumulative probability model which measures the probability of being in a category or higher based on the predictors X. The main difference is that its probabilities are derived from cumulative probabilities as each category has a threshold whereas Multinomial calculated them independently. The formula is given by
+Ordinal Logistic Regression has the same groups but they are ordered. We have the function which is a cumulative probability model which measures the probability of being in a category or higher based on the predictors $X$. The main difference is that its probabilities are derived from cumulative probabilities as each category has a threshold whereas Multinomial calculated them independently. The formula is given by
 
 $$
 \sum_{g=1}^{G^*} \rho_g = \frac{\exp(\beta_{0,g} + \beta^T X)}{1 + \exp(\beta_{0,g} + \beta^T X)}
@@ -1163,9 +1159,7 @@ multinomial_model <- train(SalePrice_Category ~ ., data = data_not_enc, method =
 print(multinomial_model)
 ```
 
-In this output we see that the multinomial regression is regularized and it uses a decay to obtain better values. Same as seen on QDA, the regularization parameter prevents overfitting and fixes complexity.
-
-The accuracy obtained was of 0.69 and a kappa of 0.62 which is a good value and it is slightly better than the models we have seen till now.
+In this output we see that the multinomial regression is regularized and it uses a decay to obtain better values. Same as seen on QDA, the regularization parameter prevents overfitting and fixes complexity. The accuracy obtained was of 0.69 and a kappa of 0.62 which is a good value and it is slightly better than the models we have seen until now.
 
 We will know use Ordinal Logistic Regression, we will focus more on this model as at first hand it will return the best values
 
@@ -1178,9 +1172,7 @@ summary(ordinal_model1)
 
 In this first output we obtain the coefficients with the standard error and t statistic. This value is also done on the different Sale Prices Categories, it compares the log odds of being in a category respect to the reference category. For example, High/Very High is the odds of being in the High category compared to being in the Very High category.
 
-Residual variance is a measure of how well the data is fitted by the model, we want this number to be as low as possible. This number may be useful in the future if we compare the residual variance to other models in order to determine the best model.
-
-The AIC is a measure of the quality of the model, the lower the better.
+Residual variance is a measure of how well the data is fitted by the model, we want this number to be as low as possible. This number may be useful in the future if we compare the residual variance to other models in order to determine the best model. The AIC is a measure of the quality of the model, the lower the better.
 
 Making the model with cross validation, it already applies regularization
 
@@ -1203,9 +1195,9 @@ print(ordinal_model)
 
 We see that there are 5 different link models which use different methods and functions to determine the cumulative properties of the response variables. Ech of these methods behave better depending on the distribution of data, in our case we expect Probit to be the mest method as it assumes a normal distribution. However we see that all methods return really similar values which means they perform really well.
 
-As expected, we obtained a higher value than Multinomial regression, we obtained an accuracy of around 0.727 and a kappa of 0.66 which shows improvement from previous models
+As expected, we obtained a higher value than Multinomial regression, we obtained an accuracy of around 0.72 and a kappa of 0.66 which shows improvement from previous models
 
-### 3.5.3 Understanding
+### 3.5.3 Interpretation
 
 Following the same procedure as with other algorithms, we will now use PCA to obtain a rep
 
@@ -1277,7 +1269,7 @@ print(svm_kernel)
 
 After this implementation of SVMs and the hyper-parameter tuning, we get a 73% accuracy and 0.66 kappa which is the highes yet for any model. This is a slight improvement over the Linear SVM model we trained before too.
 
-### 3.6.3 Understanding
+### 3.6.3 Interpretation
 
 SVMs are black-box models, meaning that it is difficult to know how the predictions have been done, and therefore interpret our results. Because of this we will use the common plot that we have been doing all over the project to observe how the predictions compare to the real values.
 
@@ -1301,17 +1293,13 @@ Yet again we see the same trend, of difficulty classifying the middle classes, b
 
 The next algorithm we will see are Random Forests. Random Forest are constructed with many decision trees which were explained previously, they combine bagging (training the model with different bootstrap samples) and random feature selection to obtain a model.
 
-Firstly, it draws x bootstrap samples of size n, there is a decision tree for each bootstrap sample. There is a random set of features chosen at each node and the best feature to split on the node is chosen. As our focus is on classification, random forests will select the most popular vote over all the trees to obtain the final prediction.
+Firstly, it draws $x$ bootstrap samples of size $n$, there is a decision tree for each bootstrap sample. There is a random set of features chosen at each node and the best feature to split on the node is chosen. As our focus is on classification, random forests will select the most popular vote over all the trees to obtain the final prediction.
 
 They are hard to interpret but in exchange they are very accurate and they reduce variance and overfitting.
 
 ### 3.7.2 Training
 
-Creating the random forest model
-
-Random forests have parameters such as ntree which correspons to the number of trees created and mtry which corresponds to the number of features selected at each split node. These are some parameters amongs others which could affect the accuracy of the model. Same as decision trees, randomForests will support categorical data
-
-Firstly, fitting the model:
+Random forests have parameters such as ntree which correspons to the number of trees created and mtry which corresponds to the number of features selected at each split node. These are some parameters amongs others which could affect the accuracy of the model. Same as decision trees, Random Forests will support categorical data. Firstly, fitting the model.
 
 ```{r}
 # Fit the Random Forest model
@@ -1326,8 +1314,6 @@ print(rf_model1)
 In the output we see we have OOB estimate of error rate which corresponds to out of bag samples. These are the points that were not selected during bootstrapping. After training the model, each tree can make predictions for the corresponding points, providing an estimate of the performance with unseen data. We can see the value is not really good as we want it to be as low as possible and we have a lot of error.
 
 Moreover, we can see the confusion matrix on the classification. One good thing is that the differences between very high and very low are clearly separated.However there are some low points classified as high and some high classified as low which is not a really bad problem. There is a bigger error in classifying the medium price which is where most points are miss classified.
-
-Training the random forest with the Caret package
 
 ```{r}
 # Set up train control for cross-validation
@@ -1350,9 +1336,9 @@ print(rf_model)
 
 The best accuracy obtained was of 0.69 with a kappa of 0.61 which is not really good and does not show an improvement with respect to our previous models.
 
-### 3.7.3 Understanding
+### 3.7.3 Interpretation
 
-Obtaining a feature importance plot, the different variables are classified according to the Gini index from the decision trees
+Obtaining a feature importance plot, the different variables are classified according to the Gini index from the decision trees.
 
 ```{r}
 # Extract feature importances
@@ -1373,14 +1359,12 @@ ggplot(importance_df,
   theme_minimal()
 ```
 
-On the one hand,clearly the most relevant features are related with area and quality, neighborhood also seems to be pretty significant. This makes sense, as the larger the area and the better the location the bigger the price will be, and vice versa.
+On the one hand, clearly the most relevant features are related with area and quality, neighborhood also seems to be pretty significant. This makes sense, as the larger the area and the better the location the bigger the price will be, and vice versa.
 
-On the other hand, other features such as mszoning and bldg type are not as relevant as the rest of variables but they do provide some useful information.
-
-We will now use pca to plot the classification
+On the other hand, other features such as mszoning and bldg type are not as relevant as the rest of variables but they do provide some useful information. We will now use PCA to plot the classification.
 
 ```{r}
-pca_data$Predicted_Class_rf <- predict(rf_model, newdata = data_enc)
+pca_data$Predicted_Class_rf <- predict(rf_model, newdata = data_not_enc)
 
 # Visualize the PCA result with predicted class labels
 ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_rf, shape=SalePrice_Category)) +
@@ -1390,4 +1374,260 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_rf, shape=SalePri
   scale_color_manual(values = rainbow(length(unique(pca_data$Predicted_Class_rf))))  # Customize colors for predicted classes
 ```
 
+```{r}
+library(pdp)
+
+# Generate Partial Dependence Plot for 'SalePrice_Category'
+pdp_plot <- partial(rf_model, pred.var = "OverallQual", grid.resolution = 20, prob = TRUE, which.class = 3)
+
+# Plot the Partial Dependence Plot
+autoplot(pdp_plot, rug = TRUE, train = data_not_enc) +
+  ggtitle('Partial Dependence Plot for Overall Quality') +
+  xlab('Overall Quality') +
+  ylab('Predicted Probability of Medium Price') +
+  theme_minimal()
+
+# Generate Partial Dependence Plot for 'SalePrice_Category'
+pdp_plot <- partial(rf_model, pred.var = "Neighborhood", grid.resolution = 20, prob = TRUE, which.class = 5)
+
+# Plot the Partial Dependence Plot
+autoplot(pdp_plot, rug = TRUE, train = data_not_enc) +
+  ggtitle('Partial Dependence Plot for each Neighborhood') +
+  xlab('Neighbourhood') +
+  ylab('Predicted Probability of Very High Price') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+```
+
 ## 3.8 Gradient Boosting
+
+### 3.8.1 Introduction
+
+Gradient Boosting is an ensemble method used for regression and classification. It builds a strong classifier based on a set of weak learners (decision trees). Although it is computationally expensive and prone to overfitting, models based on this architecture usually are the best performers in many problems, also because modern implementations have mitigated these problems.
+
+Mathematically, what we do is train an ensemble of trees stage-wise and minimizing the loss function iteration over iteration. Mathematically, the typical loss function for multi-class classification (our case) is the following, which is based on the negative log likelihood:
+
+$$
+\mathcal{L} = - \sum_{i=1}^{n} \sum_{k=1}^{K} \mathbb{1}(y_i = k) \log P(y_i = k \mid x_i)
+$$
+
+Where $1(y_i=k)$ is an indicator functions whose value is 1 if $y_i=k$ and 0 otherwise. $P(y_i=k \mid x_i)$ is the probability that the $i$-th observation belongs to group $k$. This probability is calculated using the softmax function:
+
+$$
+P(y_i = k \mid x_i) = \dfrac{e^{F_k(x_i)}}{\sum_{j=1}^Ke^{F_j(x_i)}}
+$$
+
+Where $F_k(x)$ is the logit produced by the the model for class $k$.
+
+For each class, the model has a function $F_k^{(t)}(x)$, which is updated over iterations, and the starting value could be just log-odds of the class priors. Then we compute the residuals (gradients) as following:
+
+$$
+g_{ik}^{(t)} = \frac{\partial \mathcal{L}}{\partial F_k(x_i)} = P(y_i = k \mid x_i) - \mathbb{1}(y_i = k)
+$$
+
+With $t$ being the iteration number. After this we fit a decision tree, $h_k^{(t)}$, to predict the negative gradient, so we should end up with something like this: $h_k^{(t)} \approx -g_{ik}^{(t)}$.
+
+We finally update the model with the prediction of this new weak learner, we scale it by a learning rate $\eta$. We do this to make a small-step in the right direction, so that we try to reach a local minimum after not just one operation. So we arrive to the final expression of the model:
+
+$$
+F_k^{(t+1)}(x) = F_k^{(t)}(x) + \eta h_k^{(t)} (x)
+$$
+
+We end-up doing our prediction $\hat{y}$, as the class with the highest probability in the prediction:
+
+$$
+\hat{y} = \arg\max\limits_{x}P(y=k \mid x)
+$$
+
+### 3.8.2 Training
+
+Gradient Boosting has many specific algorithms with different implementations. One of the most common ones is XGBoost (eXtreme Gradient Boosting) and is the one we will firstly use. To estimate how our model performs we will use cross-validations. Furthermore, hyper-parameter tuning is crucial in Gradient Boosting so we will also perform it to choose the most optimal model.
+
+```{r}
+levels(data_not_enc$SalePrice_Category) <- make.names(levels(data_not_enc$SalePrice_Category))
+levels(data_enc$SalePrice_Category) <- make.names(levels(data_enc$SalePrice_Category))
+
+# Define cross-validation method
+train_control <- trainControl(
+  method = "cv",        # Cross-validation
+  number = 5,           # Number of folds
+  verboseIter = TRUE,   # Display training progress
+  classProbs = TRUE,    # Enable class probabilities
+  summaryFunction = multiClassSummary # Evaluate multiple classes
+)
+
+# Define the hyperparameter grid
+grid <- expand.grid(
+  nrounds = c(50, 100, 200),          # Number of boosting iterations
+  max_depth = c(3, 5),           # Maximum tree depth
+  eta = c(0.01, 0.05, 0.1),            # Learning rate
+  gamma = 1,                     # Minimum loss reduction
+  colsample_bytree = 0.8,          # Subsample ratio of columns
+  min_child_weight = c(1, 3, 5),          # Minimum sum of weights for a child node
+  subsample = 0.8      # Subsample ratio of training instances
+)
+
+xgb_model <- train(
+  SalePrice_Category ~ .,   # Formula: Response ~ Predictors
+  data = data_not_enc,      # Training data
+  method = "xgbTree",       # XGBoost algorithm
+  trControl = train_control, # Cross-validation settings
+  tuneGrid = grid,          # Hyperparameter grid
+  metric = "Accuracy"       # Optimize for accuracy
+)
+
+# Display the best model's parameters
+cat("Best Model Hyperparameters:\n")
+print(xgb_model$bestTune)
+
+# Display the best accuracy during training (cross-validation)
+max(xgb_model$results$Accuracy)
+```
+
+We obtain with the best set of hyper-parameters an accuracy of 70% which is surprising since XGBoost is one of the most robust models, and for example the random forest we trained before had a 69% accuracy which is similar.
+
+So, just to check we will use another implementation of Gradient Boosting (GBM), and check the results to see if there is a significant improvement.
+
+```{r}
+# Set up trainControl for cross-validation
+train_control <- trainControl(
+  method = "cv",
+  number = 5,  # 5-fold cross-validation
+  verboseIter = TRUE,
+  classProbs = TRUE,
+  summaryFunction = multiClassSummary
+)
+
+# Define hyperparameter grid for tuning
+gbm_grid <- expand.grid(
+  interaction.depth = c(3, 5),  # Depth of the trees
+  n.trees = c(50, 100, 200, 500),  # Number of trees
+  shrinkage = c(0.01, 0.05, 0.1),  # Learning rate
+  n.minobsinnode = c(5, 10)  # Minimum number of observations in a node
+)
+
+# Train the gradient boosting model using gbm
+gbm_model <- train(
+  SalePrice_Category ~ .,
+  data = data_not_enc,
+  method = "gbm",
+  trControl = train_control,
+  tuneGrid = gbm_grid,
+  metric = "Accuracy"
+)
+
+# Display results
+print(gbm_model)
+cat("Best GBM Accuracy (Cross-Validation):", max(gbm_model$results$Accuracy), "\n")
+```
+
+In the end we get a 69% accuracy, which is slightly worse than the first model. With this we observe that Gradient Boosting may not be the best approach for this model, since there are other models that perform slightly better such as SVM or Logistic Regression.
+
+So far, we have used Gradient Boosting for multiple-class classification, but one of the strongest points of this algorithm is regression, which we can use for this problem. Since we wanted to perfor a classification taks, in the preprocessing we divided the price of the houses into different categories. Therefore, if we fit the model for regression and obtain a value, we can then predict the class knowing the limits of the class (e.g. if the model predict a price of 75, and we know that the "High" class are all observation whose price ranges between 50 and 100, the final prediction of this model would be "High").
+
+We will do this implementation and see if there are any significal improvements in the classification.
+
+```{r}
+data_regression <- data_enc[, -25]
+data_regression$SalePrice <- target_variable
+
+# Step 2: Define the quantiles for classification
+quantiles <- quantile(data_regression$SalePrice, probs = seq(0, 1, 0.2), na.rm = TRUE)
+
+# Step 3: Define custom summary function for classification evaluation
+classification_summary <- function(data, lev = NULL, model = NULL) {
+  # Convert regression predictions to categories
+  predicted_category <- cut(
+    data$pred,
+    breaks = quantiles,
+    include.lowest = TRUE,
+    labels = c("Very Low", "Low", "Medium", "High", "Very High")
+  )
+  
+  # Calculate confusion matrix metrics
+  actual_category <- cut(
+    data$obs,
+    breaks = quantiles,
+    include.lowest = TRUE,
+    labels = c("Very Low", "Low", "Medium", "High", "Very High")
+  )
+  
+  cm <- confusionMatrix(predicted_category, actual_category)
+  
+  # Return relevant classification metrics
+  out <- c(Accuracy = cm$overall["Accuracy"])
+  return(out)
+}
+
+# Step 4: Define trainControl for cross-validation
+train_control <- trainControl(
+  method = "cv",                      # Cross-validation
+  number = 5,                         # 5-fold cross-validation
+  verboseIter = TRUE,                 # Print progress
+  summaryFunction = classification_summary,  # Use custom summary function
+  savePredictions = "final"           # Save predictions
+)
+
+xgb_grid <- expand.grid(
+  nrounds = c(50, 100, 200),              # Number of boosting rounds
+  max_depth = c(3, 5),     # Maximum depth of trees
+  eta = c(0.01, 0.05, 0.1),    # Learning rate
+  gamma = c(0, 1),                  # Minimum loss reduction
+  colsample_bytree = 0.8,       # Subsample ratio of columns
+  min_child_weight = c(1, 3, 5),       # Minimum sum of instance weights
+  subsample = 0.8             # Subsample ratio of training instances
+)
+
+# Step 6: Train the XGBoost regression model with cross-validation
+model <- train(
+  SalePrice ~ .,                      # Regression formula
+  data = data_regression,             # Training data
+  method = "xgbTree",                 # Use XGBoost regression
+  trControl = train_control,          # Cross-validation control
+  tuneGrid = xgb_grid                 # Hyperparameter grid
+)
+
+# Step 7: Print the results of the best model
+print(model)
+
+# Step 8: View cross-validation results (Accuracy for classification)
+results <- model$resample
+print(results)
+
+# Step 9: Final classification metrics from cross-validation
+mean_accuracy <- mean(results$Accuracy)
+cat("Mean Classification Accuracy (via CV):", mean_accuracy, "\n")
+
+```
+
+We observe a very drastical improvement with an almost 74% accuracy, the highest yet. With this we prove that Gradient Boosting is still one of the most robust methods, but we just have to take the right approach.
+
+Although the results are very good, we will not take this model into account. The reason being that, if we were a company trying to earn a profit from predicting the house prices, and we had access to the real value of the houses we would use that instead of separating into classes. This is why we will "forget" that we have the precise valuation of the house and just use the first model we fitted.
+
+### 3.8.3 Interpretation
+
+```{r}
+# Extract the feature names from the trained model
+feature_names <- xgb_model$finalModel$feature_names
+
+# Compute feature importances using xgb.importance
+importance_df <- xgb.importance(
+  feature_names = feature_names,
+  model = xgb_model$finalModel
+)
+
+# Select the top 30 most important features
+top_30_features <- importance_df %>%
+  arrange(desc(Gain)) %>%  # Sort by Gain in descending order
+  head(30)                # Keep only the top 30 features
+
+# Plot the top 30 feature importances
+ggplot(top_30_features, aes(x = reorder(Feature, Gain), y = Gain)) +
+  geom_bar(stat = 'identity', fill = 'steelblue') +
+  coord_flip() +
+  ggtitle('Top 30 Feature Importances from XGBoost') +
+  xlab('Features') +
+  ylab('Gain') +
+  theme_minimal()
+
+```
