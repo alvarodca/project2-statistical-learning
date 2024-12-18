@@ -13,7 +13,7 @@ rm(list = ls())
 set.seed(123)
 
 # List of required libraries
-required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree" ,"e1071", "bestNormalize","caret", "GGally", "corrplot", "rpart", "rpart.plot", "MASS","biotools", "klaR", "iml", "fastshap")
+required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree" ,"e1071", "bestNormalize","caret", "GGally", "corrplot", "rpart", "rpart.plot", "MASS","biotools", "klaR", "iml", "fastshap","randomForest")
 
 # Install and load libraries
 suppressWarnings({ 
@@ -1107,13 +1107,13 @@ We see in the plot that many of the "uncertain" points are in the boundary betwe
 
 ### 3.5.1 Introduction
 
-The next algorithm we will use is Logistic Regression, as logistic regression supports categorical data we will use the data without encoding.
+The next algorithm we will use is Logistic Regression.
 
 Logistic regression can be used for regression and classification, there are different types of Logistic Regression. These are Binary, Multinomial and Ordinal. Binary Logistic Regression has only two possible outcomes, Multinomial has more than two possible outcomes and Ordinal has more than two possible outcomes but with the difference that the possible outcomes have an order.
 
-In this project, we have divided the Price into Very Low, Low, Medium, High, Very High. Clearly, there is an ordering of the classes and there are more thant two classes, therefore the best logistic model will be Ordinal. Ordinal Logistic Regression is based on the previous models which we will briefly explain to obtain a general idea and then focus on our model.
+In this project, we have divided the Price into Very Low, Low, Medium, High, Very High. Clearly, there is an ordering of the classes and there are more than two classes, therefore the best logistic model will be Ordinal. Ordinal Logistic Regression's idea is based on the previous models which we will briefly explain to obtain a general view and then focus on our model.
 
-Logistc regression maps the different futures to probabilities using a sigmoid function to make sure the output is between 0 and 1. It calculates the sigmoid function with a combination of the different variables, which is similar to the regression model. This formula is given by:
+Logistic regression maps the different futures to probabilities using a sigmoid function to make sure the output is between 0 and 1. It calculates the sigmoid function with a combination of the different variables, which is similar to the regression model. This formula is given by:
 
 $$
 \pi(X) = P(Y = 1 \mid X) = \frac{1}{1 + e^{-z}}
@@ -1139,7 +1139,7 @@ $$
 \pi_k(X) = \frac{\exp(\beta_{0,k} + \beta_1^T X)}{1 + \sum_{j=1}^{G-1} \exp(\beta_{0,j} + \beta_j^T X)}
 $$
 
-The groups (G) in Multinomial Linear Regression go from 0 to G-1 where the first group is the reference group y = 0, this could also be the last. The reference class does not have its own betas, it is represented in the denominator.The coefficients for the other groups show how the different variables are related to being in that outcome group versus the reference group. The choosing of this class is important as it affects the coefficients.
+The groups (G) in Multinomial Linear Regression go from 0 to G-1 where the first group is the reference group y = 0, this could also be the last. The reference class does not have its own betas, it is represented in the denominator. The coefficients for the other groups show how the different variables are related to being in that outcome group versus the reference group. The choosing of this class is important as it affects the coefficients.
 
 Ordinal Logistic Regression has the same groups but they are ordered. We have the function which is a cumulative probability model which measures the probability of being in a category or higher based on the predictors X. The main difference is that its probabilities are derived from cumulative probabilities as each category has a threshold whereas Multinomial calculated them independently. The formula is given by
 
@@ -1299,7 +1299,7 @@ Yet again we see the same trend, of difficulty classifying the middle classes, b
 
 ### 3.7.1 Introduction
 
-The next algorithm we will see are Random Forests.Random Forest are constructed with many decision trees which were explained previously, they combine bagging and random feature selection to obtain a model.
+The next algorithm we will see are Random Forests. Random Forest are constructed with many decision trees which were explained previously, they combine bagging (training the model with different bootstrap samples) and random feature selection to obtain a model.
 
 Firstly, it draws x bootstrap samples of size n, there is a decision tree for each bootstrap sample. There is a random set of features chosen at each node and the best feature to split on the node is chosen. As our focus is on classification, random forests will select the most popular vote over all the trees to obtain the final prediction.
 
@@ -1309,18 +1309,38 @@ They are hard to interpret but in exchange they are very accurate and they reduc
 
 Creating the random forest model
 
-Random forests have parameters such as ntree which correspons to the number of trees created and mtry which corresponds to the number of features selected at each split node. These are some parameters amongs others which could affect the accuracy of the model.
+Random forests have parameters such as ntree which correspons to the number of trees created and mtry which corresponds to the number of features selected at each split node. These are some parameters amongs others which could affect the accuracy of the model. Same as decision trees, randomForests will support categorical data
+
+Firstly, fitting the model:
+
+```{r}
+# Fit the Random Forest model
+rf_model1 <- randomForest(SalePrice_Category ~ ., 
+                      data = data_not_enc, 
+                      importance = TRUE)
+
+# Print model summary
+print(rf_model1)
+```
+
+In the output we see we have OOB estimate of error rate which corresponds to out of bag samples. These are the points that were not selected during bootstrapping. After training the model, each tree can make predictions for the corresponding points, providing an estimate of the performance with unseen data. We can see the value is not really good as we want it to be as low as possible and we have a lot of error.
+
+Moreover, we can see the confusion matrix on the classification. One good thing is that the differences between very high and very low are clearly separated.However there are some low points classified as high and some high classified as low which is not a really bad problem. There is a bigger error in classifying the medium price which is where most points are miss classified.
+
+Training the random forest with the Caret package
 
 ```{r}
 # Set up train control for cross-validation
-train_control <- trainControl(method = "cv", number = 10)  # 5-fold cross-validation
+train_control <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
 
-# Train SVM with a linear kernel
+
+
+# Training Random Forests
 rf_model <- train(SalePrice_Category ~ ., 
-                          data = data_enc, 
+                          data = data_not_enc, 
                           method = "rf", 
                           ntree = 500,
-                          tuneGrid = expand.grid(mtry=c(3,4,5)),
+                          tuneGrid = expand.grid(mtry = c(4,5,6)),
                           maximize = T,
                           trControl = train_control)  
 
@@ -1328,18 +1348,34 @@ rf_model <- train(SalePrice_Category ~ .,
 print(rf_model)
 ```
 
-After
+The best accuracy obtained was of 0.69 with a kappa of 0.61 which is not really good and does not show an improvement with respect to our previous models.
 
 ### 3.7.3 Understanding
 
 Obtaining a feature importance plot, the different variables are classified according to the Gini index from the decision trees
 
 ```{r}
-rf_imp <- varImp(rf_model, scale = F)
-plot(rf_imp, scales = list(y = list(cex = .95)))
+# Extract feature importances
+importance_df <- data.frame(
+  Feature = row.names(importance(rf_model1)),
+  Importance = importance(rf_model1)[, 'MeanDecreaseGini']
+)
+
+# Plot Feature Importances
+ggplot(importance_df, 
+       aes(x = reorder(Feature, Importance), 
+           y = Importance)) +
+  geom_bar(stat = 'identity', fill = 'steelblue') +
+  coord_flip() +
+  ggtitle('Feature Importances from Random Forest') +
+  xlab('') +
+  ylab('Mean Decrease in Gini') +
+  theme_minimal()
 ```
 
-On the one hand,clearly the most relevant features are related with area and quality, neighborhood also seems to be pretty significant. At the end, the larger the area and the bigger the house the higher the price and vice versa .On the other hand, variables such as Fireplaces and OverallCond are not as important.
+On the one hand,clearly the most relevant features are related with area and quality, neighborhood also seems to be pretty significant. This makes sense, as the larger the area and the better the location the bigger the price will be, and vice versa.
+
+On the other hand, other features such as mszoning and bldg type are not as relevant as the rest of variables but they do provide some useful information.
 
 We will now use pca to plot the classification
 
