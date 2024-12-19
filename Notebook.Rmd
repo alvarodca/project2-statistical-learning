@@ -13,7 +13,7 @@ rm(list = ls())
 set.seed(123)
 
 # List of required libraries
-required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree" ,"e1071", "bestNormalize","caret", "GGally", "corrplot", "rpart", "rpart.plot", "MASS","biotools", "klaR", "iml", "fastshap","randomForest", "gbm", "xgboost")
+required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree" ,"e1071", "bestNormalize","caret", "GGally", "corrplot", "rpart", "rpart.plot", "MASS","biotools", "klaR", "iml", "fastshap","randomForest", "gbm", "xgboost","reshape2", "pdp","pROC")
 
 # Install and load libraries
 suppressWarnings({ 
@@ -691,6 +691,8 @@ ggplot(data_enc, aes(x = SalePrice_Category, fill = SalePrice_Category)) +
 
 We will look at each algorithm starting with the simpler ones and building up to the more complex and precise ones. Along with each prediction, we will follow up with the interpretability of the results while trying to minimize the prediction error.
 
+This interpretability may be hard to obtain as some models are 'black boxes' and it is complicated to see how they arrived at their conclusions. We will use SHAP values (SHapley Additive exPlanations) which measures how much each feature contributes to the prediction, we will use it for models which do not support categorical data as if not we get an error, which is due to training the model with categorical data. Moreover, we will make the plot ROC curves which we will use in the future for comparing models.
+
 ## 3.1 Decision Trees
 
 ### 3.1.1 Introduction
@@ -763,6 +765,7 @@ tune_grid <- expand.grid(k = 1:20)  # Try k values from 1 to 20 (you can adjust 
 # Train the KNN model with cross-validation
 knn_model <- train(SalePrice_Category ~ ., data = data_enc, method = "knn", trControl = train_control, tuneGrid = tune_grid)
 
+
 # Display the results
 print(knn_model)
 ```
@@ -796,6 +799,46 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_kNN, shape=SalePr
 ```
 
 We observe that most of the points in the class Very High have been classified correctly. We also see how Very Low has mostly been classified correctly, although there are more errors. On the other hand, the model struggles to distinguish between the 3 middle classes, which could be due to many factors, but one of them might be because the classification may be non-linear. To solve this we could use another type of distance in the k-NN such as Mahalanobis, or we could apply the kernel trick. Although these options might better the prediction slightly, we do not think that they would make the model perform much better, since the errors appear to be specific flaws of the k-NN algorithm itself. Instead, what we will do is focus more on the other models that might capture better this complexity of the data.
+
+```{r}
+# Define a prediction wrapper for probabilities (if required)
+predict_function <- function(model, newdata) {
+  predict(model, newdata = newdata, type = "prob")
+}
+
+# Create the Predictor object
+predictor_knn <- Predictor$new(
+  model = knn_model, 
+  data = data_enc[, -which(names(data_enc) == "SalePrice_Category")], 
+  y = data_enc$SalePrice_Category, 
+  predict.fun = predict_function
+)
+
+# Computing SHAP values for the first Instance
+shap_knn <- Shapley$new(predictor_knn, x.interest = data_enc[1, -which(names(data_enc) == "SalePrice_Category")])
+```
+
+Plotting the results
+
+```{r}
+# Obtaining the results
+shap_values_knn <- shap_knn$results
+long_shap_knn <- melt(shap_values_knn)
+
+# Sorting by importance
+long_shap_knn <- long_shap_knn %>%
+  mutate(feature = reorder(feature, abs(value), FUN = mean))
+
+# Creating the violin plots
+ggplot(long_shap_knn, aes(x = value, y = feature)) +
+  geom_violin(fill = "lightblue", scale = "width") +
+  ggtitle("SHAP Values for KNN") +
+  xlab("SHAP value (impact on model output)") +
+  ylab("Feature") +
+  theme_minimal()
+```
+
+The plot shows how each feature contributes to the model output. Wider distributions indicate more variability in feature impact. A violin with mean around 0 has almost no impact as its shap values are near zero. If they are wide and far from zero means that it varies but with significant SHAP value. We can see that in this model MSZoning and Overall Condition have the lower SHAP values whereas Fireplaces and FireplaceQU seem to have more significance in this model.
 
 ## 3.3 Quadratic Discriminant Analysis and Linear Discrimant Analysis
 
@@ -999,7 +1042,7 @@ ggplot(resample_data, aes(x = Model, y = Accuracy, color = Model)) +
 
 ```
 
-The boxplots show that clearly the QDA has a wider spread and a lower median accuracy, however its value is really similar to the ones returned by the LDA. RDA seems to have bit better median and data the results are clearly as not as spread as the others. Its mean accuracy is fairly close to 0.7 which is not always the case for LDA and QDA which have mean values of around 0.67
+The boxplots show that clearly the QDA has a wider spread and a lower median accuracy, LDA does seem to work well and its values are not bad although the median is below 0.7. RDA seems to have bit better median and the results are clearly as not as spread as the others. Its mean accuracy is above 0.7 which are values not usually obtained by both QDA and LDA.
 
 ```{r}
 pca_data$Predicted_Class_rda <- predict(rda_model, newdata = data_enc)
@@ -1012,6 +1055,49 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_rda, shape=SalePr
   scale_color_manual(values = rainbow(length(unique(pca_data$Predicted_Class_rda))))  # Customize colors for predicted classes
 
 ```
+
+```{r}
+# Define a prediction wrapper for probabilities (if required)
+predict_function <- function(model, newdata) {
+  predict(model, newdata = newdata, type = "prob")
+}
+
+# Create the Predictor object
+predictor_rda <- Predictor$new(
+  model = rda_model, 
+  data = data_enc[, -which(names(data_enc) == "SalePrice_Category")], 
+  y = data_enc$SalePrice_Category, 
+  predict.fun = predict_function
+)
+
+# Computing SHAP values for the first Instance
+shap_rda <- Shapley$new(predictor_rda, x.interest = data_enc[1, -which(names(data_enc) == "SalePrice_Category")])
+
+
+```
+
+Plotting the results
+
+```{r}
+# Obtaining the results
+shap_values_rda <- shap_rda$results
+long_shap_rda <- melt(shap_values_rda)
+
+# Sorting by importance
+long_shap_rda <- long_shap_rda %>%
+  mutate(feature = reorder(feature, abs(value), FUN = mean))
+
+# Creating the violin plots
+ggplot(long_shap_rda, aes(x = value, y = feature)) +
+  geom_violin(fill = "lightblue", scale = "width") +
+  ggtitle("SHAP Values for Regularized Discriminant Analysis") +
+  xlab("SHAP value (impact on model output)") +
+  ylab("Feature") +
+  theme_minimal()
+
+```
+
+The plot shows how each feature contributes to the model output. Wider distributions indicate more variability in feature impact. The center of the distribution around zero suggests a neutral effect. A violin with mean around 0 has almost no impact as its shap values are near zero. If they are wide and far from zero means that it varies but with significant SHAP values which in this case ExterQual can have a negative SHAP for low price houses and high SHAP for high price houses.
 
 ## 3.4 Naive Bayes
 
@@ -1103,6 +1189,46 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_nb, shape = SaleP
 
 We see in the plot that many of the "uncertain" points are in the boundary between classes. We also observe that many of these points are all over the middle, since as we have said all throughout the project, it is hard to classify the points in the middle, since a point with High price could be close to one with Low price. Furthermore, many of the points that are uncertain are wrongly classified.
 
+```{r}
+# Define a prediction wrapper for probabilities (if required)
+predict_function <- function(model, newdata) {
+  predict(model, newdata = newdata, type = "prob")
+}
+suppressWarnings({
+# Create the Predictor object
+predictor_nb <- Predictor$new(
+  model = nb_model, 
+  data = data_enc[, -which(names(data_enc) == "SalePrice_Category")], 
+  y = data_enc$SalePrice_Category, 
+  predict.fun = predict_function
+)
+
+# Computing SHAP values for the first Instance
+shap_nb <- Shapley$new(predictor_nb, x.interest = data_enc[1, -which(names(data_enc) == "SalePrice_Category")]) })
+```
+
+Plotting the results
+
+```{r}
+# Obtaining the results
+shap_values_nb <- shap_rda$results
+long_shap_nb <- melt(shap_values_nb)
+
+# Sorting by importance
+long_shap_nb <- long_shap_nb %>%
+  mutate(feature = reorder(feature, abs(value), FUN = mean))
+
+# Creating the violin plots
+ggplot(long_shap_nb, aes(x = value, y = feature)) +
+  geom_violin(fill = "lightblue", scale = "width") +
+  ggtitle("SHAP Values for Naive Bayes") +
+  xlab("SHAP value (impact on model output)") +
+  ylab("Feature") +
+  theme_minimal()
+```
+
+The plot shows how each feature contributes to the model output. Wider distributions indicate more variability in feature impact. A violin with mean around 0 has almost no impact as its shap values are near zero. If they are wide and far from zero means that it varies but with significant SHAP value. MSSubClass has no impact on this model whereas ExterQual is clearly the most significant in this case.
+
 ## 3.5 Logistic Regression
 
 ### 3.5.1 Introduction
@@ -1193,9 +1319,9 @@ print(ordinal_model)
 # summary(ordinal_model)
 ```
 
-We see that there are 5 different link models which use different methods and functions to determine the cumulative properties of the response variables. Ech of these methods behave better depending on the distribution of data, in our case we expect Probit to be the mest method as it assumes a normal distribution. However we see that all methods return really similar values which means they perform really well.
+We see that there are 5 different link models which use different methods and functions to determine the cumulative properties of the response variables. Each of these methods behave better depending on the distribution of data, in our case we expect Probit or Logit to be the mest method as it assumes a normal distribution. However we see that all methods return really similar values which means they perform really well.
 
-As expected, we obtained a higher value than Multinomial regression, we obtained an accuracy of around 0.72 and a kappa of 0.66 which shows improvement from previous models
+As expected, we obtained a higher value than Multinomial regression, we obtained an accuracy of around 0.72 and a kappa of 0.66 which shows improvement from previous models.
 
 ### 3.5.3 Interpretation
 
@@ -1211,6 +1337,46 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_olr, shape=SalePr
   theme_minimal() +
   scale_color_manual(values = rainbow(length(unique(pca_data$Predicted_Class_olr))))  # Customize colors for predicted classes
 ```
+
+We will now plot the ROC curve, we have a problem as our we have multivariable classification. In binary classification there is one class(positive) and another (negative), therefore to plot the ROC curve we will use One-vs-Rest approach where for each class, one of the classes is considered as the positive class and the remaning classes are considered the negative class. Therefore we will have 5 different roc curves, the ROC measures the True Positive Rate of the model (proportion of positive values actually classified) and False Positive Rate (proportion of misclassified negatives)
+
+In this model
+
+```{r}
+# Get predicted probabilities
+pred_probs_ord <- predict(ordinal_model, newdata = data_enc, type = "prob")
+
+# True labels (SalePrice_Category)
+true_labels <- data_enc$SalePrice_Category
+
+# Create a list to store ROC curves for each class (One-vs-Rest)
+roc_list_ord <- list()
+
+# Get the levels of the true labels (class names)
+class_levels <- levels(true_labels)
+
+# Calculate ROC curve for each class using One-vs-Rest approach
+for (i in 1:length(class_levels)) {
+  # Treat the current class as positive (1) and all others as negative (0)
+  binary_true_labels <- ifelse(true_labels == class_levels[i], 1, 0)
+  
+  # Calculate ROC curve for the current class
+  roc_list_ord[[i]] <- roc(binary_true_labels, pred_probs_ord[, i], quiet = TRUE)
+}
+
+# Plot ROC curves using ggroc
+roc_plot_ord <- ggroc(roc_list_ord)
+print(roc_list_ord)
+
+```
+
+The name labels correspond to each of the classes Very Low, Low, Medium, High, Very High ordered from 1 to 5. At 1, the positive class is considered to be Very Low and the rest of classes are considered to be negative, and so on.
+
+On the first output we see that the Area under the curve for the all the different ROC curves is quite high (around 0.9) which means the model distinguishes well between classes.
+
+On the plot, the closer the ROC is to the top left corner the better the model will be for distinguishing between classes, clearly the Very High prices are the best prices distinguished followed by Very Low, we see that the model has very clear the difference between these classes with respect to the others.
+
+However we see that the model has more trouble for differentiating Medium and Low prices in relation to the rest of prices, which is where we have most of the error.
 
 ## 3.6 Support Vector Machines
 
@@ -1334,20 +1500,20 @@ rf_model <- train(SalePrice_Category ~ .,
 print(rf_model)
 ```
 
-The best accuracy obtained was of 0.69 with a kappa of 0.61 which is not really good and does not show an improvement with respect to our previous models.
+The best accuracy obtained was of 0.7 with a kappa of 0.63 which is good compared to other models but there is not a really big improvement.
 
 ### 3.7.3 Interpretation
 
 Obtaining a feature importance plot, the different variables are classified according to the Gini index from the decision trees.
 
 ```{r}
-# Extract feature importances
+# Extracting feature importances
 importance_df <- data.frame(
   Feature = row.names(importance(rf_model1)),
   Importance = importance(rf_model1)[, 'MeanDecreaseGini']
 )
 
-# Plot Feature Importances
+# Plotting Feature Importances
 ggplot(importance_df, 
        aes(x = reorder(Feature, Importance), 
            y = Importance)) +
@@ -1375,8 +1541,6 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_rf, shape=SalePri
 ```
 
 ```{r}
-library(pdp)
-
 # Generate Partial Dependence Plot for 'SalePrice_Category'
 pdp_plot <- partial(rf_model, pred.var = "OverallQual", grid.resolution = 20, prob = TRUE, which.class = 3)
 
