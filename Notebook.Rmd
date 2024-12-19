@@ -1569,7 +1569,7 @@ autoplot(pdp_plot, rug = TRUE, train = data_not_enc) +
 
 Gradient Boosting is an ensemble method used for regression and classification. It builds a strong classifier based on a set of weak learners (decision trees). Although it is computationally expensive and prone to overfitting, models based on this architecture usually are the best performers in many problems, also because modern implementations have mitigated these problems.
 
-Mathematically, what we do is train an ensemble of trees stage-wise and minimizing the loss function iteration over iteration. Mathematically, the typical loss function for multi-class classification (our case) is the following, which is based on the negative log likelihood:
+Mathematically, what we do is train an ensemble of trees stage-wise and minimizing the loss function iteration over iteration. The typical loss function for multi-class classification (our case) is the following, which is based on the negative log likelihood:
 
 $$
 \mathcal{L} = - \sum_{i=1}^{n} \sum_{k=1}^{K} \mathbb{1}(y_i = k) \log P(y_i = k \mid x_i)
@@ -1764,7 +1764,7 @@ cat("Mean Classification Accuracy (via CV):", mean_accuracy, "\n")
 
 ```
 
-We observe a very drastical improvement with an almost 74% accuracy, the highest yet. With this we prove that Gradient Boosting is still one of the most robust methods, but we just have to take the right approach.
+We observe a very drastical improvement with a 74% accuracy, the highest yet. With this we prove that Gradient Boosting is still one of the most robust methods, but we just have to take the right approach.
 
 Although the results are very good, we will not take this model into account. The reason being that, if we were a company trying to earn a profit from predicting the house prices, and we had access to the real value of the houses we would use that instead of separating into classes. This is why we will "forget" that we have the precise valuation of the house and just use the first model we fitted.
 
@@ -1794,4 +1794,191 @@ ggplot(top_30_features, aes(x = reorder(Feature, Gain), y = Gain)) +
   ylab('Gain') +
   theme_minimal()
 
+```
+
+# 4. Final Classifier
+
+## 4.1 Building the final classifier
+
+So far we have tried several algorithms for classification with some performing better than others. We have hints to know which algorithms are better than others, but in reality we do not know if one method will perform better than other on unseen data when the difference in performance is minimal. Because of this, we can benefit from an ensemble, so that our prediction is done by many models, meaning that we will reduce the variance in our prediction than with just one single algorithm.
+
+With this logic, we will select the best performing models we have tried, these were: Kernel SVM, Ordinal Logistic Regression, Regularized Discriminant Analysis and XGBoost. We will train them with the optimal hyper-parameters found before.
+
+Firstly we will train the RDA model.
+
+```{r}
+# Setting up cross-validation
+train_control <- trainControl(method = "cv", number = 5)  # 10-fold cross-validation
+
+# Defining a tuning grid for both gamma and lambda
+tune_grid <- expand.grid(gamma = 0, 
+                         lambda = 0.9)  
+
+# Training the regularized QDA model with cross-validation and tuning
+final_rda <- train(SalePrice_Category ~ ., data = data_enc, method = "rda", 
+                   trControl = train_control, tuneGrid = tune_grid)
+
+# Displaying the results
+print(final_rda$results)
+```
+
+We obtain around a 70% accuracy as expected.
+
+We now will train the Ordinal Logistic Regression model.
+
+```{r}
+# Define the mapping
+class_mapping <- c("Very.Low" = 1, "Low" = 2, "Medium" = 3, "High" = 4, "Very.High" = 5)
+
+# Function to convert class predictions to numeric values
+convert_to_numeric <- function(predictions) {
+  as.numeric(class_mapping[as.character(predictions)])
+}
+
+# Final hyperparameters for each model
+hyperparams_rda <- list(gamma = 0, lambda = 0.9)
+hyperparams_ksvm <- list(C = 2.5, sigma = 0.03)
+hyperparams_xgboost <- list(nrounds = 200, eta = 0.1, max_depth = 5, colsample_bytree = 0.8, gamma = 1, min_child_weight = 3, subsample = 0.8)
+
+# Create folds for cross-validation
+folds <- createFolds(data_enc$SalePrice_Category, k = 5, returnTrain = TRUE)
+
+# Initialize vector to store accuracies
+cv_accuracies <- numeric(length(folds))
+
+for (i in seq_along(folds)) {
+  cat("Fold: ", i, " ")
+  
+  # Get train and test indices
+  train_indices <- folds[[i]]
+  test_indices <- setdiff(seq_along(data_enc$SalePrice_Category), train_indices)
+  
+  # Split the data
+  train_data_cv <- data_enc[train_indices, ]
+  test_data_cv <- data_enc[test_indices, ]
+  
+  test_labels_cv <- test_data_cv[, 25]
+  test_data_cv <- test_data_cv[, -25]
+  
+  cat("RDA ")
+  
+  # Train individual models on the training fold
+  final_rda_cv <- train(
+    SalePrice_Category ~ .,
+    data = train_data_cv,
+    method = "rda",
+    tuneGrid = expand.grid(hyperparams_rda)
+  )
+  
+  cat("OLR ")
+  suppressWarnings({
+  final_olr_cv <- train(
+    SalePrice_Category ~ ., 
+    data = train_data_cv,
+    method = "polr"
+  )})
+  
+  cat("KSVM ")
+  final_ksvm_cv <- train(
+    SalePrice_Category ~ .,
+    data = train_data_cv,
+    method = "svmRadial",
+    tuneGrid = expand.grid(hyperparams_ksvm)
+  )
+  
+  levels(train_data_cv$SalePrice_Category) <- make.names(levels(train_data_cv$SalePrice_Category))
+  
+  cat("XGBoost ")
+  
+  final_xgboost_cv <- train(
+    SalePrice_Category ~ ., 
+    data = train_data_cv,
+    method = "xgbTree",
+    tuneGrid = expand.grid(hyperparams_xgboost),
+    metric = "Accuracy"
+  )
+  
+  # Generate predictions on the test fold
+  pred_rda <- convert_to_numeric(predict(final_rda_cv, test_data_cv))
+  pred_olr <- convert_to_numeric(predict(final_olr_cv, test_data_cv))
+  pred_ksvm <- convert_to_numeric(predict(final_ksvm_cv, test_data_cv))
+  pred_xgboost <- convert_to_numeric(predict(final_xgboost_cv, test_data_cv))
+  
+  # Calculate ensemble predictions (average and round)
+  average_prediction <- (pred_rda + pred_ksvm + pred_olr + pred_xgboost) / 4
+  final_numeric_pred <- round(average_prediction)
+  
+  # Convert back to class labels
+  final_class_pred <- names(class_mapping)[final_numeric_pred]
+
+  # Calculate accuracy for the fold
+  cv_accuracies[i] <- mean(as.factor(final_class_pred) == test_labels_cv)
+}
+
+# Overall cross-validated accuracy
+mean_cv_accuracy <- mean(cv_accuracies)
+print(mean_cv_accuracy)
+
+```
+
+```{r}
+final_rda <- train(
+    SalePrice_Category ~ .,
+    data = data_enc,
+    method = "rda",
+    tuneGrid = expand.grid(hyperparams_rda)
+)
+
+suppressWarnings({
+final_olr <- train(
+  SalePrice_Category ~ ., 
+  data = data_enc,
+  method = "polr"
+)})
+
+final_ksvm <- train(
+  SalePrice_Category ~ .,
+  data = data_enc,
+  method = "svmRadial",
+  tuneGrid = expand.grid(hyperparams_ksvm)
+)
+
+final_xgboost <- train(
+  SalePrice_Category ~ ., 
+  data = data_enc,
+  method = "xgbTree",
+  tuneGrid = expand.grid(hyperparams_xgboost),
+  metric = "Accuracy"
+)
+
+library(caret)
+
+ensemble_predict <- function(test_data) {
+  test_labels <- test_data[, 25]
+  test_data <- test_data[, -25]
+  
+  # Generate predictions on the test fold
+  pred_rda <- convert_to_numeric(predict(final_rda, test_data))
+  pred_olr <- convert_to_numeric(predict(final_olr, test_data))
+  pred_ksvm <- convert_to_numeric(predict(final_ksvm, test_data))
+  pred_xgboost <- convert_to_numeric(predict(final_xgboost, test_data))
+  
+  # Calculate ensemble predictions (average and round)
+  average_prediction <- (pred_rda + pred_ksvm + pred_olr + pred_xgboost) / 4
+  final_numeric_pred <- round(average_prediction)
+  
+  # Convert back to class labels
+  final_class_pred <- as.factor(names(class_mapping)[final_numeric_pred])
+  
+  # Calculate accuracy and confusion matrix
+  accuracy <- mean(final_class_pred == test_labels)
+  
+  # Generate confusion matrix
+  cm <- confusionMatrix(final_class_pred, test_labels)
+  
+  # Return both accuracy and confusion matrix
+  return(list(accuracy = accuracy, confusion_matrix = cm))
+}
+
+ensemble_predict(data_enc)
 ```
