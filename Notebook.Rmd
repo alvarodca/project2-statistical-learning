@@ -691,7 +691,7 @@ ggplot(data_enc, aes(x = SalePrice_Category, fill = SalePrice_Category)) +
 
 We will look at each algorithm starting with the simpler ones and building up to the more complex and precise ones. Along with each prediction, we will follow up with the interpretability of the results while trying to minimize the prediction error.
 
-This interpretability may be hard to obtain as some models are 'black boxes' and it is complicated to see how they arrived at their conclusions. We will use SHAP values (SHapley Additive exPlanations) which measures how much each feature contributes to the prediction, we will use it for models which do not support categorical data as if not we get an error, which is due to training the model with categorical data. Moreover, we will make the plot ROC curves which we will use in the future for comparing models.
+This interpretability may be hard to obtain as some models are 'black boxes' and it is complicated to see how they arrived at their conclusions. We will use SHAP values (SHapley Additive exPlanations) which measures how much each feature contributes to the prediction, we will use them for some models which return useful values and do not support categorical data as if not it is. Moreover, we will also use other graphs such as ROC curves or Feature Importance for a better understanding.
 
 ## 3.1 Decision Trees
 
@@ -699,21 +699,24 @@ This interpretability may be hard to obtain as some models are 'black boxes' and
 
 We will first look at decision trees, since they are a simple model. Although there are better algorithms for prediction, they are the foundations for more sophisticated methods. Furthermore, it is a white-box model, so it will help us understand how the predictions are done.
 
-Mathematically, decision trees do a split in the data based on selected features. They do this split based on the Gini index, a metric that is similar to accuracy, with the splits that yield the best Gini index at the root of the tree.
+Mathematically, decision trees do a split in the data based on selected features. They do this split based on the Gini index, a metric that is similar to accuracy. The splits that yield the best Gini index are located at the root of the tree.
 
 ### 3.1.2 Training
 
-Since we are focusing on classification we will remove the salePrice from the dataset. Furthermore, since decision trees can handle categorical variables, and for understanding pourposes, we will use the dataset that is not encoded.
+Since we are focusing on classification we will remove the target variable salePrice from the dataset. Furthermore, since decision trees can handle categorical variables, and for understanding purposes, we will use the dataset that is not encoded.
 
 ```{r}
-salePrice <- data_enc$SalePrice
+# Removing the penultimate columns which is where the Sale Price is found
 data_not_enc <- data_not_enc[,-(ncol(data_not_enc)-1)]
 data_enc <- data_enc[,-(ncol(data_enc)-1)]
 ```
 
-Even though we know that the decision tree is not going to be our best model, we will do a 10-fold cross validation to check more or less the performance of this simple algorithm. In addition, we will not do any hyper-parameter tuning since as we said our main focus with this algorithm is interpretability.
+Even though we know that the decision tree is not going to be our best model, we will do a 10-fold cross validation to check more or less the performance of this simple algorithm. In addition, we will not do any hyper-parameter tuning since as we said, our main focus with this algorithm is interpretability.
 
 ```{r}
+# For reproducibility purposes
+set.seed(123) 
+
 # Setting up cross-validation
 cv_folds <- trainControl(method = "cv", number = 10)
 # Performing cross-validation
@@ -737,11 +740,11 @@ rpart.plot(final_dt, digits = 3)
 dev.off()  
 ```
 
-The first split done is by OverallQual, which measure the overall quality of the house, with this we can see that houses with a higher quality usually are pricier, as expected. In the right part of the tree, we observe another split by OverallQual, so it indicates that houses with a very high overall quality are the most expensive ones. Another split is by GrLivArea, which measures the above ground area of the house, meaning that bigger houses are more expensive. Finally, it splits by GarageType, with the houses that have a garage attached to home being more expensive.
+The first split done is by OverallQual, which measure the overall quality of the house, with this we can see that houses with a higher quality usually are pricier, as expected. In the right part of the tree, we observe another split by OverallQual, so it indicates that houses with a very high overall quality are the most expensive ones. Another split is by GrLivArea, which measures the above ground area of the house, meaning that bigger houses are more expensive, which also makes sense. Finally, it splits by GarageType, with the houses that have a garage attached to home being more expensive.
 
 In the other side of the decision tree, we observe a split with GarageArea, with observations with small garages being cheaper. We also see other splits, with BsmtFinSF1, with houses with smaller basements being less expensive. Finally we also see other splits, but all regarding the area of some part of the house, like the first floor.
 
-With this we learn that the most important variables may be the overall quality of the house, as well as some other metrics related to the area of different pars of the house.
+With this we learn that the most important variables may be the overall quality of the house, as well as some other metrics related to the area of different parts of the house.
 
 ## 3.2 K-Nearest Neighbors
 
@@ -756,17 +759,20 @@ Although this algorithm has some problems when dimensionality is high and it is 
 Before training the final algorithm we have to choose the value for $k$, which is crucial for the algorithm to work optimally. For this we will perform hyper-parameter tuning for it, while measuring the efficiency of the model for each different value of $k$ with cross-validation.
 
 ```{r}
-# Set up cross-validation
+# For reproducibility purposes
+set.seed(123) 
+
+# Setting up cross-validation
 train_control <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
 
-# Define the tuning grid for k values
-tune_grid <- expand.grid(k = 1:20)  # Try k values from 1 to 20 (you can adjust this range)
+# Defining the tuning grid for k values
+tune_grid <- expand.grid(k = 1:20)  # k takes values from 1 to 20
 
-# Train the KNN model with cross-validation
+# Training the KNN model with cross-validation
 knn_model <- train(SalePrice_Category ~ ., data = data_enc, method = "knn", trControl = train_control, tuneGrid = tune_grid)
 
 
-# Display the results
+# Displaying the results
 print(knn_model)
 ```
 
@@ -775,38 +781,47 @@ print(knn_model)
 We see that the optimal $k$, is 6 as it yields approximately a 66% accuracy and a kappa of 0.58. To visualize this model, we will train it on the whole dataset and perform PCA to visualize the classification in 2 dimensions.
 
 ```{r}
-# Train the KNN model using caret
+# For reproducibility purposes
+set.seed(123) 
+
+# Training the KNN model using the caret package
 train_control <- trainControl(method = "none")  # No resampling
-# Define the grid of values for k
-tune_grid <- expand.grid(k = 6)  # Set k = 6
-# Train the KNN model using caret on the entire dataset
+
+# Defining the grid of values for k
+tune_grid <- expand.grid(k = 6)  # Setting k = 6 (best value obtained)
+
+# Training the KNN model using the caret on the entire dataset
 final_knn <- train(SalePrice_Category ~ ., data = data_enc, method = "knn", trControl = train_control, tuneGrid = tune_grid)
 
-# Perform PCA on the feature columns (exclude the target variable 'Class')
+# Performing  PCA on the feature columns (exclude the target variable 'Class')
 pca_result <- prcomp(data_enc[, -which(names(data_enc) == "SalePrice_Category")])
-# Extract the first two principal components
+
+# Extracting the first two principal components
 pca_data <- data.frame(pca_result$x[, 1:2])  # First two PCs
-pca_data$SalePrice_Category <- data_enc$SalePrice_Category  # Add class labels back to the data for visualization
-# Get predicted class labels using the trained KNN model
+pca_data$SalePrice_Category <- data_enc$SalePrice_Category  # Adding class labels  for visualization
+
+# Getting predicted class labels using the trained KNN model
 pca_data$Predicted_Class_kNN <- predict(final_knn, newdata = data_enc)
 
-# Visualize the PCA result with predicted class labels
+# Visualizing the PCA result with predicted class labels
 ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_kNN, shape=SalePrice_Category)) +
   geom_point(alpha = 0.7, size = 3) +
   labs(title = "KNN Predictions in 2D (PCA)", x = "Principal Component 1", y = "Principal Component 2") +
   theme_minimal() +
-  scale_color_manual(values = rainbow(length(unique(pca_data$Predicted_Class_kNN))))  # Customize colors for predicted classes
+  scale_color_manual(values = rainbow(length(unique(pca_data$Predicted_Class_kNN))))  # Customized colors for predicted classes
 ```
 
-We observe that most of the points in the class Very High have been classified correctly. We also see how Very Low has mostly been classified correctly, although there are more errors. On the other hand, the model struggles to distinguish between the 3 middle classes, which could be due to many factors, but one of them might be because the classification may be non-linear. To solve this we could use another type of distance in the k-NN such as Mahalanobis, or we could apply the kernel trick. Although these options might better the prediction slightly, we do not think that they would make the model perform much better, since the errors appear to be specific flaws of the k-NN algorithm itself. Instead, what we will do is focus more on the other models that might capture better this complexity of the data.
+We observe that most of the points in the class Very High have been classified correctly. We also see how Very Low has mostly been classified correctly, although there are more errors than for Very High prices. On the other hand, the model struggles to distinguish between the 3 middle classes, which could be due to many factors, but one of them might be because the classification may be non-linear. To solve this we could use another type of distance in the k-NN such as Mahalanobis, or we could apply the kernel trick. Although these options might better the prediction slightly, we do not think that they would make the model perform much better, since the errors appear to be specific flaws of the k-NN algorithm itself. Instead, what we will do is focus more on the other models that might capture better this complexity of the data.
+
+However we will plot the SHAP values to see if we can obtain more insights and see what values have more importance in our KNN model.
 
 ```{r}
-# Define a prediction wrapper for probabilities (if required)
+# Defining a prediction wrapper for probabilities (if required)
 predict_function <- function(model, newdata) {
   predict(model, newdata = newdata, type = "prob")
 }
 
-# Create the Predictor object
+# Creating the Predictor object
 predictor_knn <- Predictor$new(
   model = knn_model, 
   data = data_enc[, -which(names(data_enc) == "SalePrice_Category")], 
@@ -814,7 +829,7 @@ predictor_knn <- Predictor$new(
   predict.fun = predict_function
 )
 
-# Computing SHAP values for the first Instance
+# Computing SHAP values for the first observation
 shap_knn <- Shapley$new(predictor_knn, x.interest = data_enc[1, -which(names(data_enc) == "SalePrice_Category")])
 ```
 
@@ -825,7 +840,7 @@ Plotting the results
 shap_values_knn <- shap_knn$results
 long_shap_knn <- melt(shap_values_knn)
 
-# Sorting by importance
+# Sorting by importance for better readability
 long_shap_knn <- long_shap_knn %>%
   mutate(feature = reorder(feature, abs(value), FUN = mean))
 
@@ -838,11 +853,13 @@ ggplot(long_shap_knn, aes(x = value, y = feature)) +
   theme_minimal()
 ```
 
-The plot shows how each feature contributes to the model output. Wider distributions indicate more variability in feature impact. A violin with mean around 0 has almost no impact as its shap values are near zero. If they are wide and far from zero means that it varies but with significant SHAP value. We can see that in this model MSZoning and Overall Condition have the lower SHAP values whereas Fireplaces and FireplaceQU seem to have more significance in this model.
+The plot shows how each feature contributes to the model output. Wider distributions indicate more variability in feature impact. A violin with mean around 0 has almost no impact as its shap values are near zero. We can see that in this model MSZoning and Overall Condition have the lower SHAP values whereas Fireplaces and FireplaceQU seem to have more significance in this model.
 
 ## 3.3 Quadratic Discriminant Analysis and Linear Discrimant Analysis
 
-The next algorithms we will see are really similar, the biggest difference is that Linear Discriminant Analysis assumes that the different classes in the prediction all have the same covariance matrix. This is a really big difference, which could potentialy be one of the reasons why we chose one process over the other.
+The next algorithms we will see are Quadratic Discriminant Analysis and Linear Discriminant Analysis which are really similar,
+
+The biggest difference is that Linear Discriminant Analysis assumes that the different classes in the prediction all have the same covariance matrix (This will be explained in more detail below). This is a really big difference, which could potentially be one of the reasons why we chose one process over the other.
 
 To see if the covariance matrices are the same or not we will use Box's M Test which tests if two or more covariance matrices are equal or not. This test assumes normality from the data if not it could have many errors.
 
@@ -855,6 +872,7 @@ $$
 Where $n$ is the number of observations, $k$ the number of classes, $\Sigma_i$ each covariance matrix, and finally the pooled matrix.
 
 ```{r}
+# Performing the test
 boxM_test <- boxM(data_enc[,-which(names(data_enc) == "SalePrice_Category")],
                   grouping = data_enc$SalePrice_Category)
 print(boxM_test)
@@ -866,9 +884,7 @@ This test clearly suggest that the covariance matrices are different therefore Q
 
 #### 3.3.1.1 Introduction
 
-The next algorithms we will see are really similar, the biggest difference is that Linear Discriminant Analysis assumes that the different classes in the prediction all have the same covariance matrix just as we said before.
-
-The first algorithm we will use is Quadratic Discriminant Analysis (QDA) which is highly related to the next algorithm Linear Discrimant Analysis (LDA). It is a supervised learning technique used for classification. QDA assumes that all classes follow a normal distribution they have a mean vector and a covariance matrix (different for each class), it provides a division of the data with a quadratic decision boundary.
+The first algorithm we will use is Quadratic Discriminant Analysis (QDA) . It is a supervised learning technique used for classification. QDA assumes that all classes follow a normal distribution they have a mean vector and a covariance matrix (different for each class), it provides a division of the data with a quadratic decision boundary.
 
 This algorithm has problems with really high dimensionality as it needs to estimate many vectors and covariance matrices. Moreover it is also really sensitive to deviations from Gaussian distribution. It is an unbiased estimator with a high variance. This problems will be tackled by LDA, which assumes the same covariances for all classes therefore we will also test it afterwards
 
@@ -893,27 +909,34 @@ $$
 We will start creating the different models
 
 ```{r}
+# For reproducibility purposes
+set.seed(123) 
+
+# Creating the model
 qda_model1 <- qda(SalePrice_Category ~ ., data_enc)
 print(qda_model1)
 ```
 
-We can see that the prior probabilities for each of the classes is around 0.2 for each of the classes, basically equal chances of being assigned to each of the classes. Moreover, we can see the mean value obtained for each of the variables with respect to the classes. Variables such as Area and Quality have a higher value for Very High sale price and small values for low prices which makes sense.
+We can see that the prior probabilities for each of the classes is around 0.2 for each of the classes, basically equal chances of being assigned to each of the classes. We already knew this as it was assigned an equal distribution to each group at the beginning. Moreover, we can see the mean value obtained for each of the variables with respect to the classes. Variables such as Area and Quality have a higher value for Very High sale price and small values for low prices which makes sense.
 
 We will use cross validation and create a model based on the Quadratic Discriminant Analysis
 
 ```{r}
-# Set up cross-validation
-train_control <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
+# For reproducibility purposes
+set.seed(123) 
 
-# Train the QDA model with cross-validation
+# Setting up cross-validation
+train_control <- trainControl(method = "cv", number = 10)  
+
+# Training the QDA model with cross-validation
 qda_model <- train(SalePrice_Category ~ ., data = data_enc, method = "qda", trControl = train_control)
 
-# Display the results
+# Displaying the results
 print(qda_model)
 
 ```
 
-We can see that the value obtained for accuracy is around 0.65 and around 0.55 for the kappa value which are good values and better than doing it by random chance but we could improve this values for sure.
+We can see that the value obtained for accuracy is around 0.65 and around 0.55 for the kappa value which are somewhat decent values and better than doing it by random chance but we could improve this values for sure.
 
 We will now compare with LDA and then jump to conclusions
 
@@ -923,7 +946,7 @@ We will now compare with LDA and then jump to conclusions
 
 We have already briefly introduced Linear Discriminant Analysis (LDA), it is also a supervised learning algorithm used for classification. It eliminates some of the QDA problems, it does this by introducing some bias to reduce variance thereby having a lower prediction error. The division of data is done linearly.
 
-Same as QDA, it assumes a normal distribution but the main difference and the main reason why problems such as really high dimensionality are solved is that it assumes are equal. This is because if there are K classes we would only need K-1 discriminant functions as one class could be inferred from others.
+Same as QDA, it assumes a normal distribution but the main difference and the main reason why problems such as really high dimensionality are solved is that it assumes the covariance matrices are equal. This is because if there are K classes we would only need K-1 discriminant functions as one class could be inferred from others.
 
 $$
 \delta'_k(x) = \delta_k(x) - \delta_K(x)
@@ -931,11 +954,17 @@ $$
 
 Moreover it estimates p+1 parameters (transformation of the original parameters) to make the discriminant function. In Big O notation this is $O(p)$. But QDA has to estimate the mean for each parameter $p$, compute $\dfrac{p(p+1)}{2}$ covariance matrices and the probabilities. Which is why for a large $p$ LDA will be more practical. In Big O notation this is $O(p^2)$.
 
-For classifying it follows the same procedure as QDA of the discriminant function. The biggest difference is just that it computes only one matrix. It will classify according to the highest value obtained.
+For classifying it follows the same procedure as QDA of the discriminant function. The biggest difference is just that it computes only one matrix. Same as before it will classify according to the highest value obtained.
 
 #### 3.3.2.2 Training
 
+Creating our model and training
+
 ```{r}
+# For reproducibility purposes
+set.seed(123) 
+
+# Creating the model
 lda_model1 <- lda(SalePrice_Category~., data_enc)
 print(lda_model1)
 ```
@@ -947,6 +976,9 @@ We can also see the coefficients of linear discriminant which could be used to o
 Now we will use cross validation to obtain the accuracy and kappa.
 
 ```{r}
+# For reproducibility purposes
+set.seed(123) 
+
 # Set up cross-validation
 train_control <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
 
@@ -963,9 +995,11 @@ The accuracy is of around 0.69 and a value of 0.61 for kappa which is an increas
 
 The results obtained are surprising if we take Box's M test into consideration which returned a really low p value which indicated with great confidence that the covariance matrices were equal and this led us to believe that the results for QDA would be better.
 
-After training both models we saw that this in fact was not true as LDA returns a better result. This could be due to potential overfitting from QDA as it estimates a separate covariance matrix and it might fit noise in the data.
+After training both models we saw that this in fact was not true as LDA returns a better result. This could be due to an error in the Box M test which may make errors, there could also be potential overfitting from QDA as it estimates a separate covariance matrix and it might fit noise in the data.
 
 Another possible option is that QDA is not regularized which is usually when the number of features is really high in relation to the number observations. Regular Discriminant Analysis offers a solution to this by reducing complexity and avoiding overfitting.
+
+This also support our idea of training the different models as we could not completely guarantee that QDA would perform better.
 
 #### 3.3.2.4 Regularized Discriminant Analysis
 
@@ -989,11 +1023,14 @@ $$
 
 Each point will be assigned according to the discriminant function which returns a higher value.
 
-In this code we could try many values for gamma and lambda, the complexity for this is $O(n^n)$as each value for lambda is tested with each value for gamma, therefore we chose a few numbers as it returns good values and does not take as much time.
+In this code we could try many values for gamma and lambda, the complexity for this is $O(n^n)$as each value for lambda is tested with each value for gamma, therefore we chose a few numbers as it returns good values and it will not take as much time.
 
 ```{r}
-# Setting up cross-validation
-train_control <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
+# For reproducibility purposes
+set.seed(123) 
+
+# Setting up cross-validation with 10 folds
+train_control <- trainControl(method = "cv", number = 10)  
 
 # Defining a tuning grid for both gamma and lambda
 tune_grid <- expand.grid(gamma = seq(0, 1, by = 0.3), 
@@ -1019,7 +1056,7 @@ We can see that we obtained an accuracy of around 0.7 which is a clear improveme
 
 #### 3.3.2.5 Visualization of Results
 
-We will know make some boxplots to create a visual representation of the results obtained.
+We will now make some boxplots to create a visual representation of the results obtained and compare between the different trained models.
 
 ```{r}
 # Obtaining the performance metrics for all the different models
@@ -1042,7 +1079,9 @@ ggplot(resample_data, aes(x = Model, y = Accuracy, color = Model)) +
 
 ```
 
-The boxplots show that clearly the QDA has a wider spread and a lower median accuracy, LDA does seem to work well and its values are not bad although the median is below 0.7. RDA seems to have bit better median and the results are clearly as not as spread as the others. Its mean accuracy is above 0.7 which are values not usually obtained by both QDA and LDA.
+The boxplots show that clearly the QDA has a wider spread and a lower median accuracy, LDA does seem to work well and its values are not bad although the median is below 0.7. RDA seems to have a bit better median and the results are clearly as not as spread as the others. Its mean accuracy is above 0.7 which are values not usually obtained by both QDA and LDA.
+
+Following the same procedure as KNN we will use PCA to visualize the predictions.
 
 ```{r}
 pca_data$Predicted_Class_rda <- predict(rda_model, newdata = data_enc)
@@ -1056,13 +1095,15 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_rda, shape=SalePr
 
 ```
 
+The results obtained are really similar to those of the KNN, clear distinction for Very High and Very Low with some errors. There are more problems for the classification of the middle classes.
+
 ```{r}
-# Define a prediction wrapper for probabilities (if required)
+# Defining a prediction wrapper for probabilities 
 predict_function <- function(model, newdata) {
   predict(model, newdata = newdata, type = "prob")
 }
 
-# Create the Predictor object
+# Creating the Predictor object
 predictor_rda <- Predictor$new(
   model = rda_model, 
   data = data_enc[, -which(names(data_enc) == "SalePrice_Category")], 
@@ -1070,7 +1111,7 @@ predictor_rda <- Predictor$new(
   predict.fun = predict_function
 )
 
-# Computing SHAP values for the first Instance
+# Computing SHAP values for the first observation
 shap_rda <- Shapley$new(predictor_rda, x.interest = data_enc[1, -which(names(data_enc) == "SalePrice_Category")])
 
 
@@ -1130,6 +1171,9 @@ Although it is a somewhat simple kind of model, it is good to try it before movi
 We will firstly perform a small hyper-parameter tuning to optimize the model's results, while measuring how well it performs with a 10 fold cross-validation.
 
 ```{r}
+# For reproducibility purposes
+set.seed(123) 
+
 # Define the trainControl object for cross-validation
 train_control <- trainControl(method = "cv", number = 10)
 
@@ -1274,6 +1318,9 @@ $$
 As explained before we have more than one class, therefore we will not be able to use binary logistic regression. The different groups here show a clear order. But on this project we want to try many different algorithms to understand and interpret them, therefore we will train both Multinomial and Ordinal Logistic regression.
 
 ```{r}
+# For reproducibility purposes
+set.seed(123) 
+
 # Creating cross validation
 train_control <- trainControl(method = "cv", number = 10, verboseIter = FALSE)
 
@@ -1290,6 +1337,9 @@ In this output we see that the multinomial regression is regularized and it uses
 We will know use Ordinal Logistic Regression, we will focus more on this model as at first hand it will return the best values
 
 ```{r}
+# For reproducibility purposes
+set.seed(123) 
+
 ordinal_model1 <- polr(SalePrice_Category ~ ., data = data_not_enc, Hess = TRUE)
 
 ## view a summary of the model
@@ -1303,6 +1353,9 @@ Residual variance is a measure of how well the data is fitted by the model, we w
 Making the model with cross validation, it already applies regularization
 
 ```{r}
+# For reproducibility purposes
+set.seed(123) 
+
 # Creating cross validation
 train_control <- trainControl(
   method = "cv",
@@ -1343,6 +1396,9 @@ We will now plot the ROC curve, we have a problem as our we have multivariable c
 In this model
 
 ```{r}
+# For reproducibility purposes
+set.seed(123) 
+
 # Get predicted probabilities
 pred_probs_ord <- predict(ordinal_model, newdata = data_enc, type = "prob")
 
@@ -1367,10 +1423,13 @@ for (i in 1:length(class_levels)) {
 # Plot ROC curves using ggroc
 roc_plot_ord <- ggroc(roc_list_ord)
 print(roc_list_ord)
+print(roc_plot_ord)
 
 ```
 
 The name labels correspond to each of the classes Very Low, Low, Medium, High, Very High ordered from 1 to 5. At 1, the positive class is considered to be Very Low and the rest of classes are considered to be negative, and so on.
+
+We also have to take into account that the ROC values are made with respect to the training data therefore as this data is used for training we will usually obtain higher values as the model has been optimized to perform well on it.
 
 On the first output we see that the Area under the curve for the all the different ROC curves is quite high (around 0.9) which means the model distinguishes well between classes.
 
@@ -1403,6 +1462,9 @@ This is a very powerful algorithm, but due to its complexity its use case is for
 We will first use Linear SVM before moving to more complex methods, which assumes that the classes are linearly separable.
 
 ```{r}
+# For reproducibility purposes
+set.seed(123) 
+
 # Set up train control for cross-validation
 train_control <- trainControl(method = "cv", number = 5)  # 5-fold cross-validation
 
@@ -1419,6 +1481,9 @@ print(svm_linear_model)
 As we expected there is a higher accuracy (70%) and kappa (0.63) compared to the previous models. But we know this can be improved, the following way. Before we said that Linear SVM assumes the data is linearly separable but this is not always the case. To solve this, we use the Kernel SVM that augments the dimensionality of the data with a Kernel function in order to do non-linear classification. The kernel function we will use is Gaussian RBF, since is one of the most common and versatile ones. We will also perform a small hyper-parameter tuning to optimize the results further.
 
 ```{r}
+# For reproducibility purposes
+set.seed(123) 
+
 # Define a grid of hyperparameters to tune
 grid <- expand.grid(C = seq(0.7, 2.5, by = 0.1), sigma = seq(0.01, 0.1, by = 0.01))
 
@@ -1468,6 +1533,9 @@ They are hard to interpret but in exchange they are very accurate and they reduc
 Random forests have parameters such as ntree which correspons to the number of trees created and mtry which corresponds to the number of features selected at each split node. These are some parameters amongs others which could affect the accuracy of the model. Same as decision trees, Random Forests will support categorical data. Firstly, fitting the model.
 
 ```{r}
+# For reproducibility purposes
+set.seed(123) 
+
 # Fit the Random Forest model
 rf_model1 <- randomForest(SalePrice_Category ~ ., 
                       data = data_not_enc, 
@@ -1482,6 +1550,9 @@ In the output we see we have OOB estimate of error rate which corresponds to out
 Moreover, we can see the confusion matrix on the classification. One good thing is that the differences between very high and very low are clearly separated.However there are some low points classified as high and some high classified as low which is not a really bad problem. There is a bigger error in classifying the medium price which is where most points are miss classified.
 
 ```{r}
+# For reproducibility purposes
+set.seed(123) 
+
 # Set up train control for cross-validation
 train_control <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
 
@@ -1608,6 +1679,9 @@ $$
 Gradient Boosting has many specific algorithms with different implementations. One of the most common ones is XGBoost (eXtreme Gradient Boosting) and is the one we will firstly use. To estimate how our model performs we will use cross-validations. Furthermore, hyper-parameter tuning is crucial in Gradient Boosting so we will also perform it to choose the most optimal model.
 
 ```{r}
+# For reproducibility purposes
+set.seed(123) 
+
 levels(data_not_enc$SalePrice_Category) <- make.names(levels(data_not_enc$SalePrice_Category))
 levels(data_enc$SalePrice_Category) <- make.names(levels(data_enc$SalePrice_Category))
 
@@ -1653,11 +1727,14 @@ We obtain with the best set of hyper-parameters an accuracy of 70% which is surp
 So, just to check we will use another implementation of Gradient Boosting (GBM), and check the results to see if there is a significant improvement.
 
 ```{r}
+# For reproducibility purposes
+set.seed(123) 
+
 # Set up trainControl for cross-validation
 train_control <- trainControl(
   method = "cv",
   number = 5,  # 5-fold cross-validation
-  verboseIter = TRUE,
+  verboseIter = FALSE,
   classProbs = TRUE,
   summaryFunction = multiClassSummary
 )
@@ -1692,6 +1769,9 @@ So far, we have used Gradient Boosting for multiple-class classification, but on
 We will do this implementation and see if there are any significal improvements in the classification.
 
 ```{r}
+# For reproducibility purposes
+set.seed(123) 
+
 data_regression <- data_enc[, -25]
 data_regression$SalePrice <- target_variable
 
@@ -1802,11 +1882,14 @@ ggplot(top_30_features, aes(x = reorder(Feature, Gain), y = Gain)) +
 
 So far we have tried several algorithms for classification with some performing better than others. We have hints to know which algorithms are better than others, but in reality we do not know if one method will perform better than other on unseen data when the difference in performance is minimal. Because of this, we can benefit from an ensemble, so that our prediction is done by many models, meaning that we will reduce the variance in our prediction than with just one single algorithm.
 
-With this logic, we will select the best performing models we have tried, these were: Kernel SVM, Ordinal Logistic Regression, Regularized Discriminant Analysis and XGBoost. We will train them with the optimal hyper-parameters found before.
+With this logic, we will select the best performing models we have tried, these were: Kernel SVM, Ordinal Logistic Regression, Regularized Discriminant Analysis and XGBoost. Ordinal Logistic Regression obtained a high accuracy value but when creating the model it led to many errors mostly referring to not found initial values, as we were short on time and could not find a solution, we removed it from our ensemble model to avoid problems. We will train them with the optimal hyper-parameters found before.
 
 Firstly we will train the RDA model.
 
 ```{r}
+# For reproducibility purposes
+set.seed(123) 
+
 # Setting up cross-validation
 train_control <- trainControl(method = "cv", number = 5)  # 10-fold cross-validation
 
@@ -1827,6 +1910,9 @@ We obtain around a 70% accuracy as expected.
 We now will train the Ordinal Logistic Regression model.
 
 ```{r}
+# For reproducibility purposes
+set.seed(123) 
+
 # Define the mapping
 class_mapping <- c("Very.Low" = 1, "Low" = 2, "Medium" = 3, "High" = 4, "Very.High" = 5)
 
@@ -1870,14 +1956,6 @@ for (i in seq_along(folds)) {
     tuneGrid = expand.grid(hyperparams_rda)
   )
   
-  cat("OLR ")
-  suppressWarnings({
-  final_olr_cv <- train(
-    SalePrice_Category ~ ., 
-    data = train_data_cv,
-    method = "polr"
-  )})
-  
   cat("KSVM ")
   final_ksvm_cv <- train(
     SalePrice_Category ~ .,
@@ -1900,12 +1978,11 @@ for (i in seq_along(folds)) {
   
   # Generate predictions on the test fold
   pred_rda <- convert_to_numeric(predict(final_rda_cv, test_data_cv))
-  pred_olr <- convert_to_numeric(predict(final_olr_cv, test_data_cv))
   pred_ksvm <- convert_to_numeric(predict(final_ksvm_cv, test_data_cv))
   pred_xgboost <- convert_to_numeric(predict(final_xgboost_cv, test_data_cv))
   
   # Calculate ensemble predictions (average and round)
-  average_prediction <- (pred_rda + pred_ksvm + pred_olr + pred_xgboost) / 4
+  average_prediction <- (pred_rda + pred_ksvm + pred_xgboost) / 3
   final_numeric_pred <- round(average_prediction)
   
   # Convert back to class labels
@@ -1922,6 +1999,10 @@ print(mean_cv_accuracy)
 ```
 
 ```{r}
+# For reproducibility purposes
+set.seed(123) 
+
+# Train the models on the entire dataset
 final_rda <- train(
     SalePrice_Category ~ .,
     data = data_enc,
@@ -1929,42 +2010,34 @@ final_rda <- train(
     tuneGrid = expand.grid(hyperparams_rda)
 )
 
-suppressWarnings({
-final_olr <- train(
-  SalePrice_Category ~ ., 
-  data = data_enc,
-  method = "polr"
-)})
-
 final_ksvm <- train(
-  SalePrice_Category ~ .,
-  data = data_enc,
-  method = "svmRadial",
-  tuneGrid = expand.grid(hyperparams_ksvm)
+    SalePrice_Category ~ .,
+    data = data_enc,
+    method = "svmRadial",
+    tuneGrid = expand.grid(hyperparams_ksvm),
+    probability = TRUE
 )
 
 final_xgboost <- train(
-  SalePrice_Category ~ ., 
-  data = data_enc,
-  method = "xgbTree",
-  tuneGrid = expand.grid(hyperparams_xgboost),
-  metric = "Accuracy"
+    SalePrice_Category ~ ., 
+    data = data_enc,
+    method = "xgbTree",
+    tuneGrid = expand.grid(hyperparams_xgboost),
+    metric = "Accuracy"
 )
 
-library(caret)
-
+# Function to generate ensemble predictions and evaluate performance
 ensemble_predict <- function(test_data) {
   test_labels <- test_data[, 25]
   test_data <- test_data[, -25]
   
-  # Generate predictions on the test fold
+  # Generate predictions for each model
   pred_rda <- convert_to_numeric(predict(final_rda, test_data))
-  pred_olr <- convert_to_numeric(predict(final_olr, test_data))
   pred_ksvm <- convert_to_numeric(predict(final_ksvm, test_data))
   pred_xgboost <- convert_to_numeric(predict(final_xgboost, test_data))
   
   # Calculate ensemble predictions (average and round)
-  average_prediction <- (pred_rda + pred_ksvm + pred_olr + pred_xgboost) / 4
+  average_prediction <- (pred_rda + pred_ksvm + pred_xgboost) / 3
   final_numeric_pred <- round(average_prediction)
   
   # Convert back to class labels
@@ -1980,5 +2053,154 @@ ensemble_predict <- function(test_data) {
   return(list(accuracy = accuracy, confusion_matrix = cm))
 }
 
+# Example usage
 ensemble_predict(data_enc)
+
+```
+
+The ensemble predict model returned an accuracy of 0.85. We will now create some graphs to interpret this model and obtain insights about the data.
+
+### 4.3 Interpretation
+
+We will first obtained the feature importance taking into account the feature importance from each of these models. This is obtained as the mean value each model returns for the features.
+
+As SVM is an algorithm which does not return probabilities we will not take it into account for some of the plots. We will still make them to see if we can obtain more information about or model but keeping in mind that we are missing part of our model.
+
+```{r}
+# Computing feature importance for each model using varImp
+importance_rda <- varImp(final_rda)$importance
+importance_ksvm <- varImp(final_ksvm)$importance
+importance_xgboost <- varImp(final_xgboost)$importance
+
+# Combining and averaging importance scores
+importance_df <- data.frame(
+  Feature = rownames(importance_rda),
+  RDA = rowMeans(as.data.frame(importance_rda)),
+  KSVM = rowMeans(as.data.frame(importance_ksvm)),
+  XGBoost = rowMeans(as.data.frame(importance_xgboost))
+)
+
+# Adding an Ensemble importance score (mean importance across all models)
+importance_df$Ensemble <- rowMeans(importance_df[, c("RDA", "KSVM", "XGBoost")])
+
+# Ordering the features with respect to the importance value
+top_features <- importance_df %>%
+  arrange(desc(Ensemble))
+
+# Plotting the importance
+ggplot(top_features, aes(x = reorder(Feature, Ensemble), y = Ensemble)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  ggtitle("Feature Importances from Ensemble Model") +
+  xlab("Features") +
+  ylab("Importance") +
+  theme_minimal()
+
+
+```
+
+As seen with most of our previously trained models the models give a big importance to both Area and Quality which makes sense as they are two categories people take into account when buying houses.
+
+Moreover, BldgType and MSSubClass dont seem to have a really high significance as the rest of models.
+
+Based on this graph, we will make a partial dependence plot on Overall Qual as it is clearly the most important variable when classifying, to see how it affects each class.
+
+```{r}
+# Compute Partial Dependence for each model
+pdp_rda <- partial(
+  final_rda,
+  pred.var = "OverallQual",
+  train = data_enc,
+  grid.resolution = 20,
+  prob = TRUE
+)
+
+
+pdp_xgboost <- partial(
+  final_xgboost,
+  pred.var = "OverallQual",
+  train = data_enc,
+  grid.resolution = 20,
+  prob = TRUE
+)
+
+# Combine the Partial Dependence results into a single data frame
+ensemble_pd <- data.frame(
+  Overall_Qual = pdp_rda$OverallQual,  # Grid values (assumes same grid across models)
+  RDA = pdp_rda$yhat,
+  XGBoost = pdp_xgboost$yhat
+)
+
+# Compute the ensemble's averaged Partial Dependence
+ensemble_pd$Ensemble <- rowMeans(ensemble_pd[, c("RDA", "XGBoost")])
+
+# Plot the Ensemble PDP (single line)
+ggplot(ensemble_pd, aes(x = Overall_Qual, y = Ensemble)) +
+  geom_line(color = "steelblue", size = 1.2) +
+  labs(
+    title = "Partial Dependence Plot for Overall Quality (Ensemble)",
+    x = "Overall Quality",
+    y = "Predicted Probability"
+  ) +
+  theme_minimal()
+
+```
+
+The Y axis represents the Predicted Probability of the target variable Sale Price actually happening. The x axis shows the values of the Overall Quality which are between -2.5 and 5 (they have been scaled). This clearly shows a negative relation between both of these variables, the higher the Quality the lower the probability. When the slope seems to flatten which here happens close to 0 just shows that the feature is not as important for these values.
+
+# For reproducibility purposes
+
+set.seed(123)
+
+Creating the ROC curves based on the test
+
+```{r}
+# Function to calculate predicted probabilities for the training set
+ensemble_predict_probabilities_train <- function(train_data) {
+  train_labels <- train_data[, 25]  # Assuming labels are in column 25
+  train_data <- train_data[, -25]  # Exclude the label column for prediction
+  
+  # Generate probability predictions for each model (RDA, SVM, XGBoost)
+  prob_rda <- predict(final_rda, train_data, type = "prob")
+  prob_xgboost <- predict(final_xgboost, train_data, type = "prob")
+  
+  # Calculate ensemble probabilities as the mean of probabilities from each model
+  ensemble_probs <- (prob_rda + prob_xgboost) / 2
+  
+  return(list(probs = ensemble_probs, labels = train_labels))
+}
+
+# Get ensemble probabilities and true labels for the training set
+ensemble_results_train <- ensemble_predict_probabilities_train(data_enc)
+ensemble_probs_train <- ensemble_results_train$probs
+true_labels_train <- ensemble_results_train$labels
+
+# Create a list to store ROC curves for each class (One-vs-Rest)
+roc_list_ensemble_train <- list()
+
+# Get the levels of the true labels (class names)
+class_levels_train <- levels(true_labels_train)
+
+# Calculate ROC curve for each class using One-vs-Rest approach
+for (i in 1:length(class_levels_train)) {
+  # Treat the current class as positive (1) and all others as negative (0)
+  binary_true_labels <- ifelse(true_labels_train == class_levels_train[i], 1, 0)
+  
+  # Calculate ROC curve for the current class
+  roc_list_ensemble_train[[i]] <- roc(binary_true_labels, ensemble_probs_train[, i], quiet = TRUE)
+}
+
+# Plot ROC curves using ggroc
+roc_plot_ensemble_train <- ggroc(roc_list_ensemble_train, aes = "color") +
+  ggtitle("One-vs-Rest ROC Curves for Ensemble Model (Training Set)") +
+  xlab("False Positive Rate") +
+  ylab("True Positive Rate") +
+  theme_minimal()
+
+# Print the ROC curves and the plot
+print(roc_list_ensemble_train)
+print(roc_plot_ensemble_train)
+
+
+
 ```
