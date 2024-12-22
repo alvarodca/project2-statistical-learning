@@ -13,7 +13,7 @@ rm(list = ls())
 set.seed(123)
 
 # List of required libraries
-required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree" ,"e1071", "bestNormalize","caret", "GGally", "corrplot", "rpart", "rpart.plot", "MASS","biotools", "klaR", "iml", "fastshap","randomForest", "gbm", "xgboost","reshape2", "pdp","pROC")
+required_libraries <- c("skimr", "ggplot2","dplyr", "VIM", "dbscan", "RColorBrewer", "isotree" ,"e1071", "bestNormalize","caret", "GGally", "corrplot", "rpart", "rpart.plot", "MASS","biotools", "klaR", "iml", "fastshap","randomForest", "gbm", "xgboost","reshape2", "pdp","pROC", "shapviz")
 
 # Install and load libraries
 suppressWarnings({ 
@@ -70,7 +70,7 @@ Based on the previous plot and the skim function used we can see that there are 
 colnames(training)[which(colMeans(is.na(training))>0.75)]
 ```
 
-These columns are Alley, PoolQC, Fence and MiscFeature
+These columns are Alley, PoolQC, Fence and MiscFeature.
 
 Alley refers to the type of alley access to the property. It can be Gravel or Paved, NA means no alley, almost all houses have an NA value here, we don't think that the type of alley is of great importance, so we will remove it.
 
@@ -105,7 +105,7 @@ numeric_data <- numeric_data[,-1]
 categorical_data <- select_if(training, is.character)
 ```
 
-We will start working with numerical data as it will be a little bit easier. Firstly we will have a look at the different columns
+We will start working with numerical data as it will be a little bit easier. Firstly we will have a look at the different columns.
 
 ```{r}
 skim(numeric_data)
@@ -171,9 +171,7 @@ skim(training)
 
 ## 2.2 Exploratory Data Analysis
 
-We will deal with outliers later as they are a bit complicated to deal with in this dataset due to the distribution of the variables, this distribution can be seen in the graph we made below.
-
-If we do the scaling to remove outliers we will not be able to correctly visualize the data. Moreover, visualizing our data could be crucial for potentially finding out some outliers.
+We will deal with outliers later as they are a bit complicated to deal with in this dataset due to the distribution of the variables, this distribution can be seen in the graph we made below. If we do the scaling to remove outliers we will not be able to correctly visualize the data. Moreover, visualizing our data could be crucial for potentially finding out some outliers.
 
 We want to generate some insights to obtain information about the Sale Price and how it relates to the remaining variables.
 
@@ -202,7 +200,7 @@ This graph clearly shows a positive correlation between the Sale Price and the A
 
 In relation to the dwelling, most of the houses are either 1 story or 2 story, we see that the price, area and quality is not really affected by the type of the dwelling, although it helps us to differentiate the data and we can see some points for example in the 2 story there is a house with really high area and moderate price which could be an outlier.
 
-We will now compare the Sale Price respect to the year it was built and differentiating by the Type of Dwelling
+We will now compare the Sale Price respect to the year it was built and differentiating by the Type of Dwelling.
 
 ```{r}
 
@@ -262,10 +260,16 @@ problematic_data <- numeric_data[, problematic_cols]
 new_numeric_data <- numeric_data[, !(names(numeric_data) %in% problematic_cols)]
 
 # Scaling the remaining numeric data
-scaled_num_data <- as.data.frame(apply(new_numeric_data, 2, function(col) {
-  bestNormalize(col, allow_orderNorm = TRUE)$x.t
-}))
-scaled_num_data <- as.data.frame(scale(scaled_num_data)) 
+# Create an empty list to store bestNormalize objects
+training_bestNormalize <- list()
+# Create a data frame to store transformed data
+scaled_num_data <- data.frame(matrix(nrow = nrow(new_numeric_data), ncol = 0))  # Empty dataframe
+# Apply bestNormalize to each column and store the objects
+for (col in names(new_numeric_data)) {
+  best_norm <- bestNormalize(new_numeric_data[[col]], allow_orderNorm = TRUE)
+  training_bestNormalize[[col]] <- best_norm  # Save the transformation object
+  scaled_num_data[[col]] <- best_norm$x.t  # Save the transformed column
+}
 
 # Scaling the problematic columns separately
 scaled_problematic <- as.data.frame(scale(problematic_data)) 
@@ -302,9 +306,9 @@ Where $minPts$ is a hyper-parameter, the number of points for a region to be con
 With this explanation we see the importance of picking the right $\epsilon$ value (eps) and the number of neighbors (minPts). Because of this we will calculate the k-distances plot and use the elbow method to determine the eps. As minPts we will use 4, since it is a reasonable number in our case.
 
 ```{r}
-# Calculate k-distances (e.g., 4th nearest neighbor)
+# Calculate k-distances
 kNNdistplot(final_scaled_data, k = 10)
-abline(h = 6.5, col = "red", lty = 2)  # Choose the threshold for eps
+abline(h = 6.5, col = "red", lty = 2) 
 ```
 
 We see that there is an elbow at 6.5, so this is the value we will use for eps. With this we can finally train a DBSCAN model and plot our predictions for outliers.
@@ -316,7 +320,7 @@ model <- dbscan(final_scaled_data, eps = 6.5, minPts = 10)
 # Performing pca for plotting
 pca <- prcomp(final_scaled_data, center = TRUE)
 # Get the first two principal components
-pca_data <- as.data.frame(pca$x)  # The principal components scores
+pca_data <- as.data.frame(pca$x)  
 # Add cluster labels to the PCA data
 pca_data$dbscan <- model$cluster
 
@@ -384,7 +388,7 @@ ocsvm_model <- svm(
   type = "one-classification",
   kernel = "radial",  # RBF kernel
   gamma = 1 / ncol(data),  # Default gamma (1 / num_features)
-  nu = 0.05  # Proportion of outliers you expect
+  nu = 0.05  # Proportion of outliers expected
 )
 
 # Get predictions
@@ -410,7 +414,6 @@ We keep using the dataset based on the PCA we have done (for plotting mainly), t
 Therefore, we created another column that decided if an observatoin had at least two 0's, in other words, at least two models consider the observation to be an outlier, this point will be eliminated from our dataset. As different models assure that this points are atypical points we can discard them from our dataset confidently.
 
 ```{r}
-
 # Creating the final column based on the values
 pca_data$outliers <- ifelse(rowSums(pca_data[, c("iso", "ocsvm", "dbscan")]) >= 2, 1, 0)
 
@@ -427,16 +430,13 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = as.factor(outliers), shape=as.fac
   theme_minimal()
 ```
 
-The previous graph compares the ensemble's prediction with the isolation forest, where the distinction by color is the outlier detection done by the ensemble and the distinction by shape is done by the Isolation Forest.
-
-We can see that most of the outliers are predicted the same way, although there are some discrepancies. These are mainly between the Isolation Forest and the other models, since their approach is quite different.
+The previous graph compares the ensemble's prediction with the isolation forest, where the distinction by color is the outlier detection done by the ensemble and the distinction by shape is done by the Isolation Forest. We can see that most of the outliers are predicted the same way, although there are some discrepancies. These are mainly between the Isolation Forest and the other models, since their approach is quite different.
 
 With this, we will now proceed to eliminate the outliers.
 
 ```{r}
 # Obtaining the indices of the outliers
 outlier_indices <- which(pca_data$outliers == 0)
-# This will return 51 indices 
 
 # Removing this indices from the dataset
 final_scaled_data <- final_scaled_data[-outlier_indices,]
@@ -447,13 +447,7 @@ For our categorical data we have around 39 variables and our numerical data has 
 
 ## 2.4 Feature Extraction
 
-First of all we will have to handle categorical data,
-
-We will obtain the most important features with the help of RFE method.
-
-RFE or Recursive Feature Elimination builds many models based on the target variable. It will remove variables based on their importance calculated with the Gini index. With this reduced dataset it will create another model and again remove the least important variable. This process is repeated until the best value is found.
-
-After applying this process we will obtain an optimal subset of predictors which contribute the most to the target variable.
+We will obtain the most important features with the help of RFE method. RFE or Recursive Feature Elimination builds many models based on the target variable. It will remove variables based on their importance calculated with the Gini index. With this reduced dataset it will create another model and again remove the least important variable. This process is repeated until the best value is found. After applying this process we will obtain an optimal subset of predictors which contribute the most to the target variable.
 
 When using this method there are two hyperparameters to take into account, the type of model that will be created, which in our case due to that we have categorical data we will clearly use Random Forests. Apart from that, we can also select the number features that will be used in each of the models.
 
@@ -465,15 +459,11 @@ num_predictors <- final_scaled_data[,-which(names(final_scaled_data) == "SalePri
 target_variable <- final_scaled_data$SalePrice
 
 control <- rfeControl(functions = rfFuncs, method = "cv", number = 5)
-# rfFuncs refers to that random forests will be done
-# cv refers to that cross validation will be done
-# Number referes to the number of folds created by cross validation
 
 # Numerical columns
 rfe_num <- rfe(num_predictors, target_variable, sizes = seq(5, 35, by = 5), rfeControl = control)
-# Performs RFE, the variable size takes into account the number of features we will keep. This process tries models with all different sizes, computes the optimal size based on the accuracy and returns the best size.
-print(rfe_num)
 
+print(rfe_num)
 
 # Categorical columns 
 rfe_cat <- rfe(categorical_data, target_variable, sizes = seq(5, 15, by = 2), rfeControl = control)
@@ -511,31 +501,39 @@ reduced_data$SalePrice <- target_variable
 
 We reduced our numerical features to 15 variables and our categorical data to 9 variables. Going from 76 variables to 24, where we added the target variable.
 
-Making a feature importance plot based on the RFE results, it will rank in both datasets how early each variable was selected and afterwards create a plot
+Making a feature importance plot based on the RFE results, it will rank in both datasets how early each variable was selected and afterwards create a plot.
 
-```{r eval=FALSE, include=FALSE}
-#Obtaining the importance from both numerical and categorical data
+```{r}
+# Extract feature importance from RFE objects
+num_importance <- rfe_num$variables
+cat_importance <- rfe_cat$variables
+selected_num_features2 <- num_importance$var[1:25]
+print(selected_num_features2)
 
-num_importance <- varImp(rfe_num)$Importance
+# Combine feature importance
+feature_importance <- rbind(
+    data.frame(Feature = num_importance$var, Importance = num_importance$Overall, Type = "Numerical"),
+    data.frame(Feature = cat_importance$var, Importance = cat_importance$Overall, Type = "Categorical")
+)
 
-cat_importance <- varImp(rfe_cat)$Importance
+# Ensure unique features by aggregating importance
+feature_importance <- feature_importance %>%
+    group_by(Feature, Type) %>%
+    summarise(Importance = mean(Importance, na.rm = TRUE), .groups = "drop")
 
-feature_importance <- data.frame(
+# Sort features by importance
+feature_importance <- feature_importance[order(-feature_importance$Importance), ]
 
-Feature = c(rownames(num_importance), rownames(cat_importance)),
-
-Importance = c(num_importance$Overall, cat_importance$Overall
-
-))
-
-# Sorting the results to have them in order
-
-feature_importance <- feature_importance[order(-feature_importance$Importance)]
-
-ggplot(feature_importance, aes(x = reorder(Feature, Importance), y = Importance))+
-
-geom_bar(stat = "identity", fill = "steelblue")
-
+# Plot
+ggplot(feature_importance, aes(x = reorder(Feature, Importance), y = Importance, fill = Type)) +
+    geom_bar(stat = "identity", color="black") +
+    coord_flip() +
+    labs(
+        title = "Feature Importance from RFE",
+        x = "Features",
+        y = "Importance"
+    ) +
+    theme_minimal()
 
 ```
 
@@ -578,16 +576,18 @@ Instead, we will use target encoding, where each unique value is replaced with t
 First we will create a function that will carry out this target encoding.
 
 ```{r}
-# Function for target encoding with cross-validation
-target_encode_cv <- function(data, target_col, cat_columns, n_folds = 5) {
+target_encode_cv_with_means <- function(data, target_col, cat_columns, n_folds = 5) {
   folds <- createFolds(data[[target_col]], k = n_folds)  # Create folds
   
-  # Initializing an empty dataframe to store encoded results
+  # Initialize the encoded dataset
   data_encoded <- data
+  
+  # Initialize a list to store overall means for each categorical column
+  overall_means <- list()
   
   # Loop through each categorical column
   for (col in cat_columns) {
-    # Initialize the encoded column
+    # Add a new column for the encoded values
     data_encoded[[paste0(col, '_enc')]] <- NA
     
     # Process each fold
@@ -597,22 +597,27 @@ target_encode_cv <- function(data, target_col, cat_columns, n_folds = 5) {
       train_fold <- data[-val_indices, ]
       val_fold <- data[val_indices, ]
       
-      # Compute means in the training fold for the target variable
+      # Compute the target mean for each category in the training fold
       means <- train_fold %>%
         group_by(.data[[col]]) %>%
-        summarize(mean_target = mean(.data[[target_col]], na.rm = TRUE))
+        summarize(mean_target = mean(.data[[target_col]], na.rm = TRUE), .groups = "drop")
       
       # Merge the means with the validation fold
       val_fold <- val_fold %>%
         left_join(means, by = col) %>%
         mutate(mean_target = ifelse(is.na(mean_target), mean(train_fold[[target_col]], na.rm = TRUE), mean_target))
       
-      # Assigning the encoded values
+      # Assign the encoded values to the appropriate rows in the dataset
       data_encoded[val_indices, paste0(col, '_enc')] <- val_fold$mean_target
     }
+    
+    # After cross-validation, compute overall mean encoding for this column
+    overall_means[[col]] <- data %>%
+      group_by(.data[[col]]) %>%
+      summarize(mean_target = mean(.data[[target_col]], na.rm = TRUE), .groups = "drop")
   }
   
-  return(data_encoded)
+  return(list(encoded_data = data_encoded, overall_means = overall_means))
 }
 
 ```
@@ -623,7 +628,9 @@ We now have the code that encodes our desired columns based on target encoding, 
 # Remaining variables
 categorical_columns <- c("HouseStyle", "MSZoning", "Neighborhood", "BldgType", "GarageType")
 # Applying the function
-df_encoded <- target_encode_cv(data_enc, target_col = "SalePrice", cat_columns = categorical_columns)
+result <- target_encode_cv_with_means(data_enc, target_col = "SalePrice", cat_columns = categorical_columns)
+df_encoded <- result$encoded_data
+training_target_means <- result$overall_means
 
 # Switching the variables
 data_enc$HouseStyle <- df_encoded$HouseStyle_enc
@@ -632,7 +639,7 @@ data_enc$MSZoning <- df_encoded$MSZoning_enc
 data_enc$BldgType <- df_encoded$BldgType_enc
 data_enc$GarageType <- df_encoded$GarageType_enc
 
-# Scaling the data becuase of the encodings
+# Scaling the data because of the encodings
 data_enc[, (ncol(data_enc) - 10):(ncol(data_enc) - 1)] <- scale(data_enc[, (ncol(data_enc) - 10):(ncol(data_enc) - 1)])
 
 # Obtaining a general view of our final encoded dataset
@@ -653,32 +660,33 @@ We now can see that most of the variables have a strong positive relation with t
 Many of the algorithms we will use are specific for classification, while our predictor is a numerical variable. To deal with this problem we will divide the price of each house into 5 categories (Very Low, Low, Medium, High, Very High). We will make this classification based on quantiles so that we have balanced categories, which will make it easier to train posterior models.
 
 ```{r}
-# Quantile-based bins (e.g., quartiles or deciles)
-num_categories <- 5  # Use 5 for quintiles, 4 for quartiles, 10 for deciles
+# Quantile-based bins
+num_categories <- 5  
+training_saleprice_breaks <- quantile(data_enc$SalePrice, probs = seq(0, 1, length.out = num_categories + 1))
 data_enc$SalePrice_Category <- cut(data_enc$SalePrice, 
-                                       breaks = quantile(data_enc$SalePrice, probs = seq(0, 1, length.out = num_categories + 1)),
+                                       breaks = training_saleprice_breaks,
                                        labels = paste0("Category_", 1:num_categories),
                                        include.lowest = TRUE)
 
 # Assign descriptive labels
 labels <- c("Very Low", "Low", "Medium", "High", "Very High")
 data_enc$SalePrice_Category <- cut(data_enc$SalePrice, 
-                                breaks = quantile(data_enc$SalePrice, probs = seq(0, 1, length.out = 6)),
+                                breaks = training_saleprice_breaks,
                                 labels = labels,
                                 include.lowest = TRUE)
 
 # For not encoded data
-# Quantile-based bins (e.g., quartiles or deciles)
-num_categories <- 5  # Use 5 for quintiles, 4 for quartiles, 10 for deciles
+# Quantile-based bins 
+num_categories <- 5  
 data_not_enc$SalePrice_Category <- cut(data_not_enc$SalePrice, 
-                                       breaks = quantile(data_not_enc$SalePrice, probs = seq(0, 1, length.out = num_categories + 1)),
+                                       breaks = training_saleprice_breaks,
                                        labels = paste0("Category_", 1:num_categories),
                                        include.lowest = TRUE)
 
 # Assign descriptive labels
 labels <- c("Very Low", "Low", "Medium", "High", "Very High")
 data_not_enc$SalePrice_Category <- cut(data_not_enc$SalePrice, 
-                                breaks = quantile(data_not_enc$SalePrice, probs = seq(0, 1, length.out = 6)),
+                                breaks = training_saleprice_breaks,
                                 labels = labels,
                                 include.lowest = TRUE)
 
@@ -808,7 +816,7 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_kNN, shape=SalePr
   geom_point(alpha = 0.7, size = 3) +
   labs(title = "KNN Predictions in 2D (PCA)", x = "Principal Component 1", y = "Principal Component 2") +
   theme_minimal() +
-  scale_color_manual(values = rainbow(length(unique(pca_data$Predicted_Class_kNN))))  # Customized colors for predicted classes
+  scale_color_manual(values = rainbow(length(unique(pca_data$Predicted_Class_kNN))))  
 ```
 
 We observe that most of the points in the class Very High have been classified correctly. We also see how Very Low has mostly been classified correctly, although there are more errors than for Very High prices. On the other hand, the model struggles to distinguish between the 3 middle classes, which could be due to many factors, but one of them might be because the classification may be non-linear. To solve this we could use another type of distance in the k-NN such as Mahalanobis, or we could apply the kernel trick. Although these options might better the prediction slightly, we do not think that they would make the model perform much better, since the errors appear to be specific flaws of the k-NN algorithm itself. Instead, what we will do is focus more on the other models that might capture better this complexity of the data.
@@ -833,7 +841,7 @@ predictor_knn <- Predictor$new(
 shap_knn <- Shapley$new(predictor_knn, x.interest = data_enc[1, -which(names(data_enc) == "SalePrice_Category")])
 ```
 
-Plotting the results
+Plotting the results.
 
 ```{r}
 # Obtaining the results
@@ -938,7 +946,7 @@ print(qda_model)
 
 We can see that the value obtained for accuracy is around 0.65 and around 0.55 for the kappa value which are somewhat decent values and better than doing it by random chance but we could improve this values for sure.
 
-We will now compare with LDA and then jump to conclusions
+We will now compare with LDA and then jump to conclusions.
 
 ### 3.3.2 Linear Discriminant Analysis
 
@@ -971,7 +979,7 @@ print(lda_model1)
 
 We can see in the output that the prior probabilities for each of the classes is around 0.2 for all of them. Apart from that we can also see the mean values for each class in the target variable. There are many negative values due to the normalization which has been done before. We can see that for example for the Very High Category, variables such as the area or the quality have high positive values whereas for the very low category this are negative.
 
-We can also see the coefficients of linear discriminant which could be used to obtain the discriminant function or for dimensionality reduction as LDA is also used in this area. Based on this output we do not see much difference to the QDA done before, they provide really similar values
+We can also see the coefficients of linear discriminant which could be used to obtain the discriminant function or for dimensionality reduction as LDA is also used in this area. Based on this output we do not see much difference to the QDA done before, they provide really similar values.
 
 Now we will use cross validation to obtain the accuracy and kappa.
 
@@ -1079,7 +1087,7 @@ ggplot(resample_data, aes(x = Model, y = Accuracy, color = Model)) +
 
 ```
 
-The boxplots show that clearly the QDA has a wider spread and a lower median accuracy, LDA does seem to work well and its values are not bad although the median is below 0.7. RDA seems to have a bit better median and the results are clearly as not as spread as the others. Its mean accuracy is above 0.7 which are values not usually obtained by both QDA and LDA.
+The boxplots show that clearly the QDA has a wider spread and a lower median accuracy, LDA does seem to work well and its values are not bad although the median is below 0.7. RDA seems to have a bit better median and the results are clearly as not as spread as the others. Its mean accuracy is around 0.7 which are values not usually obtained by both QDA and LDA.
 
 Following the same procedure as KNN we will use PCA to visualize the predictions.
 
@@ -1117,7 +1125,7 @@ shap_rda <- Shapley$new(predictor_rda, x.interest = data_enc[1, -which(names(dat
 
 ```
 
-Plotting the results
+Plotting the results.
 
 ```{r}
 # Obtaining the results
@@ -1138,7 +1146,7 @@ ggplot(long_shap_rda, aes(x = value, y = feature)) +
 
 ```
 
-The plot shows how each feature contributes to the model output. Wider distributions indicate more variability in feature impact. The center of the distribution around zero suggests a neutral effect. A violin with mean around 0 has almost no impact as its shap values are near zero. If they are wide and far from zero means that it varies but with significant SHAP values which in this case ExterQual can have a negative SHAP for low price houses and high SHAP for high price houses.
+The plot shows how each feature contributes to the model output. We see how there are many variables that contribute very little to the prediction such as BldgType. We also observe that the variables that seem to drive mostly the predictions ar GrLiveArea, X2ndFlrSF and ExterQual. This is surprising since we did not see the area of the 2nd floor before (X2ndFlrSF), but the model does a pretty good job taking it into account.
 
 ## 3.4 Naive Bayes
 
@@ -1227,11 +1235,13 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_nb, shape = SaleP
   scale_size_manual(values = c(`TRUE` = 1, `FALSE` = 5), guide = "none") +
   labs(title = "Naive Bayes Predictions in 2D (PCA)", x = "Principal Component 1", y = "Principal Component 2") +
   theme_minimal() +
-  scale_color_manual(values = rainbow(length(unique(pca_data$Predicted_Class_nb))))  # Customize colors for predicted classes
+  scale_color_manual(values = rainbow(length(unique(pca_data$Predicted_Class_nb))))  
 
 ```
 
 We see in the plot that many of the "uncertain" points are in the boundary between classes. We also observe that many of these points are all over the middle, since as we have said all throughout the project, it is hard to classify the points in the middle, since a point with High price could be close to one with Low price. Furthermore, many of the points that are uncertain are wrongly classified.
+
+Now we will calculate the SHAP values to further interpret the classification.
 
 ```{r}
 # Define a prediction wrapper for probabilities (if required)
@@ -1251,7 +1261,7 @@ predictor_nb <- Predictor$new(
 shap_nb <- Shapley$new(predictor_nb, x.interest = data_enc[1, -which(names(data_enc) == "SalePrice_Category")]) })
 ```
 
-Plotting the results
+Plotting the results.
 
 ```{r}
 # Obtaining the results
@@ -1271,7 +1281,7 @@ ggplot(long_shap_nb, aes(x = value, y = feature)) +
   theme_minimal()
 ```
 
-The plot shows how each feature contributes to the model output. Wider distributions indicate more variability in feature impact. A violin with mean around 0 has almost no impact as its shap values are near zero. If they are wide and far from zero means that it varies but with significant SHAP value. MSSubClass has no impact on this model whereas ExterQual is clearly the most significant in this case.
+We observe yet again how variables related to area and quality are the ones that drive the most the predictions. This has been a common trend across models, so the difference in accuracy should be in finer details.
 
 ## 3.5 Logistic Regression
 
@@ -1350,7 +1360,7 @@ In this first output we obtain the coefficients with the standard error and t st
 
 Residual variance is a measure of how well the data is fitted by the model, we want this number to be as low as possible. This number may be useful in the future if we compare the residual variance to other models in order to determine the best model. The AIC is a measure of the quality of the model, the lower the better.
 
-Making the model with cross validation, it already applies regularization
+Making the model with cross validation, it already applies regularization.
 
 ```{r}
 # For reproducibility purposes
@@ -1372,7 +1382,7 @@ print(ordinal_model)
 # summary(ordinal_model)
 ```
 
-We see that there are 5 different link models which use different methods and functions to determine the cumulative properties of the response variables. Each of these methods behave better depending on the distribution of data, in our case we expect Probit or Logit to be the mest method as it assumes a normal distribution. However we see that all methods return really similar values which means they perform really well.
+We see that there are 5 different link models which use different methods and functions to determine the cumulative properties of the response variables. Each of these methods behave better depending on the distribution of data, in our case we expect Probit or Logit to be the best method as it assumes a normal distribution. However we see that all methods return really similar values which means they perform really well.
 
 As expected, we obtained a higher value than Multinomial regression, we obtained an accuracy of around 0.72 and a kappa of 0.66 which shows improvement from previous models.
 
@@ -1393,7 +1403,7 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_olr, shape=SalePr
 
 We will now plot the ROC curve, we have a problem as our we have multivariable classification. In binary classification there is one class(positive) and another (negative), therefore to plot the ROC curve we will use One-vs-Rest approach where for each class, one of the classes is considered as the positive class and the remaning classes are considered the negative class. Therefore we will have 5 different roc curves, the ROC measures the True Positive Rate of the model (proportion of positive values actually classified) and False Positive Rate (proportion of misclassified negatives)
 
-In this model
+We calculate this ROC curve for the model.
 
 ```{r}
 # For reproducibility purposes
@@ -1466,13 +1476,13 @@ We will first use Linear SVM before moving to more complex methods, which assume
 set.seed(123) 
 
 # Set up train control for cross-validation
-train_control <- trainControl(method = "cv", number = 5)  # 5-fold cross-validation
+train_control <- trainControl(method = "cv", number = 5)  
 
 # Train SVM with a linear kernel
 svm_linear_model <- train(SalePrice_Category ~ ., 
                           data = data_enc, 
                           method = "svmLinear", 
-                          trControl = train_control)  # Scale the features
+                          trControl = train_control)  
 
 # Print the results
 print(svm_linear_model)
@@ -1513,7 +1523,7 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_SVM, shape=SalePr
   geom_point(alpha = 0.7, size = 3) +
   labs(title = "SVM Predictions in 2D (PCA)", x = "Principal Component 1", y = "Principal Component 2") +
   theme_minimal() +
-  scale_color_manual(values = rainbow(length(unique(pca_data$Predicted_Class_SVM))))  # Customize colors for predicted classes
+  scale_color_manual(values = rainbow(length(unique(pca_data$Predicted_Class_SVM))))
 ```
 
 Yet again we see the same trend, of difficulty classifying the middle classes, but there is a difference. In this case the class "Medium" has been mostly classified correctly compared with other models. We also observe that overall the classes have been classified correctly for the most part, hence the high accuracy.
@@ -1530,7 +1540,7 @@ They are hard to interpret but in exchange they are very accurate and they reduc
 
 ### 3.7.2 Training
 
-Random forests have parameters such as ntree which correspons to the number of trees created and mtry which corresponds to the number of features selected at each split node. These are some parameters amongs others which could affect the accuracy of the model. Same as decision trees, Random Forests will support categorical data. Firstly, fitting the model.
+Random forests have parameters such as ntree which corresponds to the number of trees created and mtry which corresponds to the number of features selected at each split node. These are some parameters amongs others which could affect the accuracy of the model. Same as decision trees, Random Forests will support categorical data. Firstly, fitting the model.
 
 ```{r}
 # For reproducibility purposes
@@ -1554,7 +1564,7 @@ Moreover, we can see the confusion matrix on the classification. One good thing 
 set.seed(123) 
 
 # Set up train control for cross-validation
-train_control <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
+train_control <- trainControl(method = "cv", number = 10)  
 
 
 
@@ -1571,7 +1581,7 @@ rf_model <- train(SalePrice_Category ~ .,
 print(rf_model)
 ```
 
-The best accuracy obtained was of 0.7 with a kappa of 0.63 which is good compared to other models but there is not a really big improvement.
+The best accuracy obtained was of \~0.68 with a kappa of 0.63 which is good compared to other models but there is not a really big improvement.
 
 ### 3.7.3 Interpretation
 
@@ -1596,9 +1606,9 @@ ggplot(importance_df,
   theme_minimal()
 ```
 
-On the one hand, clearly the most relevant features are related with area and quality, neighborhood also seems to be pretty significant. This makes sense, as the larger the area and the better the location the bigger the price will be, and vice versa.
+On the one hand, clearly the most relevant features are related with area and quality, neighborhood also seems to be pretty significant. This makes sense, as the larger the area and the better the location the bigger the price will be, and viceversa. On the other hand, other features such as mszoning and bldg type are not as relevant as the rest of variables but they do provide some useful information.
 
-On the other hand, other features such as mszoning and bldg type are not as relevant as the rest of variables but they do provide some useful information. We will now use PCA to plot the classification.
+We will now use PCA to plot the classification.
 
 ```{r}
 pca_data$Predicted_Class_rf <- predict(rf_model, newdata = data_not_enc)
@@ -1610,6 +1620,10 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_rf, shape=SalePri
   theme_minimal() +
   scale_color_manual(values = rainbow(length(unique(pca_data$Predicted_Class_rf))))  # Customize colors for predicted classes
 ```
+
+We can see a big difference with respect to "geometry-based" models (e.g SVM, KNN...), since the model predicts well categories surrounded by another category, for example when "Very Low" is close to "Low" labeled points. This is really helpful, since for a future ensemble method, using models that complement the others' weaknesses is one of the more robust approaches.
+
+We will now do a partial dependence plot, to see how each variable impacts the classification of one specific category.
 
 ```{r}
 # Generate Partial Dependence Plot for 'SalePrice_Category'
@@ -1633,6 +1647,10 @@ autoplot(pdp_plot, rug = TRUE, train = data_not_enc) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 ```
+
+In the first plot we see how OverallQual impacts the house labeled as "Medium" for price. We observe that values centered around 0, the mean of the this column, have higher probabilities of being classified as "Medium". This makes sense, since houses with an average quality should neither be expensive nor cheap for the most part.
+
+In the second plot we see how each neighborhood impacts the houses labeled as "Very High". We see that neighborhood such as NoRidge and NridgHt, seem to have the most positive impact, meaning this are the "expensive" neighborhoods of the city.
 
 ## 3.8 Gradient Boosting
 
@@ -1687,10 +1705,9 @@ levels(data_enc$SalePrice_Category) <- make.names(levels(data_enc$SalePrice_Cate
 
 # Define cross-validation method
 train_control <- trainControl(
-  method = "cv",        # Cross-validation
-  number = 5,           # Number of folds
-  verboseIter = TRUE,   # Display training progress
-  classProbs = TRUE,    # Enable class probabilities
+  method = "cv",        
+  number = 5,         
+  classProbs = TRUE,    
   summaryFunction = multiClassSummary # Evaluate multiple classes
 )
 
@@ -1706,13 +1723,14 @@ grid <- expand.grid(
 )
 
 xgb_model <- train(
-  SalePrice_Category ~ .,   # Formula: Response ~ Predictors
-  data = data_not_enc,      # Training data
-  method = "xgbTree",       # XGBoost algorithm
-  trControl = train_control, # Cross-validation settings
-  tuneGrid = grid,          # Hyperparameter grid
-  metric = "Accuracy"       # Optimize for accuracy
+  SalePrice_Category ~ .,   
+  data = data_not_enc,      
+  method = "xgbTree",     
+  trControl = train_control, 
+  tuneGrid = grid,          
+  metric = "Accuracy"       
 )
+    
 
 # Display the best model's parameters
 cat("Best Model Hyperparameters:\n")
@@ -1722,7 +1740,7 @@ print(xgb_model$bestTune)
 max(xgb_model$results$Accuracy)
 ```
 
-We obtain with the best set of hyper-parameters an accuracy of 70% which is surprising since XGBoost is one of the most robust models, and for example the random forest we trained before had a 69% accuracy which is similar.
+We obtain with the best set of hyper-parameters an accuracy of \~69% which is surprising since XGBoost is one of the most robust models, and for example the random forest we trained before had \~68% accuracy which is similar.
 
 So, just to check we will use another implementation of Gradient Boosting (GBM), and check the results to see if there is a significant improvement.
 
@@ -1734,7 +1752,6 @@ set.seed(123)
 train_control <- trainControl(
   method = "cv",
   number = 5,  # 5-fold cross-validation
-  verboseIter = FALSE,
   classProbs = TRUE,
   summaryFunction = multiClassSummary
 )
@@ -1762,7 +1779,7 @@ print(gbm_model)
 cat("Best GBM Accuracy (Cross-Validation):", max(gbm_model$results$Accuracy), "\n")
 ```
 
-In the end we get a 69% accuracy, which is slightly worse than the first model. With this we observe that Gradient Boosting may not be the best approach for this model, since there are other models that perform slightly better such as SVM or Logistic Regression.
+In the end we get a 69% accuracy, which is really similar to the first model. With this we observe that Gradient Boosting may not be the best approach for this model, since there are other models that perform slightly better such as SVM or Logistic Regression.
 
 So far, we have used Gradient Boosting for multiple-class classification, but one of the strongest points of this algorithm is regression, which we can use for this problem. Since we wanted to perfor a classification taks, in the preprocessing we divided the price of the houses into different categories. Therefore, if we fit the model for regression and obtain a value, we can then predict the class knowing the limits of the class (e.g. if the model predict a price of 75, and we know that the "High" class are all observation whose price ranges between 50 and 100, the final prediction of this model would be "High").
 
@@ -1775,10 +1792,10 @@ set.seed(123)
 data_regression <- data_enc[, -25]
 data_regression$SalePrice <- target_variable
 
-# Step 2: Define the quantiles for classification
+# Define the quantiles for classification
 quantiles <- quantile(data_regression$SalePrice, probs = seq(0, 1, 0.2), na.rm = TRUE)
 
-# Step 3: Define custom summary function for classification evaluation
+# Define custom summary function for classification evaluation
 classification_summary <- function(data, lev = NULL, model = NULL) {
   # Convert regression predictions to categories
   predicted_category <- cut(
@@ -1803,52 +1820,53 @@ classification_summary <- function(data, lev = NULL, model = NULL) {
   return(out)
 }
 
-# Step 4: Define trainControl for cross-validation
+# Define trainControl for cross-validation
 train_control <- trainControl(
-  method = "cv",                      # Cross-validation
-  number = 5,                         # 5-fold cross-validation
-  verboseIter = TRUE,                 # Print progress
-  summaryFunction = classification_summary,  # Use custom summary function
-  savePredictions = "final"           # Save predictions
+  method = "cv",                      
+  number = 5,                         
+  summaryFunction = classification_summary,  
+  savePredictions = "final"           
 )
 
 xgb_grid <- expand.grid(
-  nrounds = c(50, 100, 200),              # Number of boosting rounds
+  nrounds = c(50, 100, 200),      # Number of boosting rounds
   max_depth = c(3, 5),     # Maximum depth of trees
   eta = c(0.01, 0.05, 0.1),    # Learning rate
-  gamma = c(0, 1),                  # Minimum loss reduction
+  gamma = c(0, 1),        # Minimum loss reduction
   colsample_bytree = 0.8,       # Subsample ratio of columns
   min_child_weight = c(1, 3, 5),       # Minimum sum of instance weights
-  subsample = 0.8             # Subsample ratio of training instances
+  subsample = 0.8         # Subsample ratio of training instances
 )
 
-# Step 6: Train the XGBoost regression model with cross-validation
+# Train the XGBoost regression model with cross-validation
 model <- train(
-  SalePrice ~ .,                      # Regression formula
-  data = data_regression,             # Training data
-  method = "xgbTree",                 # Use XGBoost regression
-  trControl = train_control,          # Cross-validation control
-  tuneGrid = xgb_grid                 # Hyperparameter grid
+  SalePrice ~ .,                      
+  data = data_regression,             
+  method = "xgbTree",                 
+  trControl = train_control,        
+  tuneGrid = xgb_grid             
 )
 
-# Step 7: Print the results of the best model
+# Print the results of the best model
 print(model)
 
-# Step 8: View cross-validation results (Accuracy for classification)
+# View cross-validation results (Accuracy for classification)
 results <- model$resample
 print(results)
 
-# Step 9: Final classification metrics from cross-validation
+# Final classification metrics from cross-validation
 mean_accuracy <- mean(results$Accuracy)
 cat("Mean Classification Accuracy (via CV):", mean_accuracy, "\n")
 
 ```
 
-We observe a very drastical improvement with a 74% accuracy, the highest yet. With this we prove that Gradient Boosting is still one of the most robust methods, but we just have to take the right approach.
+We observe a very drastical improvement with \~75% accuracy, the highest yet. With this we prove that Gradient Boosting is still one of the most robust methods, but we just have to take the right approach.
 
 Although the results are very good, we will not take this model into account. The reason being that, if we were a company trying to earn a profit from predicting the house prices, and we had access to the real value of the houses we would use that instead of separating into classes. This is why we will "forget" that we have the precise valuation of the house and just use the first model we fitted.
 
 ### 3.8.3 Interpretation
+
+Since XGBoost is a black-box model it is difficult to interpret its results. What we will do is make a plot to see how each feature impact the prediction of the model and compare it to previous results.
 
 ```{r}
 # Extract the feature names from the trained model
@@ -1862,8 +1880,8 @@ importance_df <- xgb.importance(
 
 # Select the top 30 most important features
 top_30_features <- importance_df %>%
-  arrange(desc(Gain)) %>%  # Sort by Gain in descending order
-  head(30)                # Keep only the top 30 features
+  arrange(desc(Gain)) %>%  
+  head(30)                
 
 # Plot the top 30 feature importances
 ggplot(top_30_features, aes(x = reorder(Feature, Gain), y = Gain)) +
@@ -1876,6 +1894,8 @@ ggplot(top_30_features, aes(x = reorder(Feature, Gain), y = Gain)) +
 
 ```
 
+We observe the usual quality and area related variables as the most important. Most importantly, we also see that variables related to the basement seem to have a reasonable impact in the classification. Again this will be useful, since predictions that complement each other are best for an ensemble.
+
 # 4. Final Classifier
 
 ## 4.1 Building the final classifier
@@ -1884,30 +1904,7 @@ So far we have tried several algorithms for classification with some performing 
 
 With this logic, we will select the best performing models we have tried, these were: Kernel SVM, Ordinal Logistic Regression, Regularized Discriminant Analysis and XGBoost. Ordinal Logistic Regression obtained a high accuracy value but when creating the model it led to many errors mostly referring to not found initial values, as we were short on time and could not find a solution, we removed it from our ensemble model to avoid problems. We will train them with the optimal hyper-parameters found before.
 
-Firstly we will train the RDA model.
-
-```{r}
-# For reproducibility purposes
-set.seed(123) 
-
-# Setting up cross-validation
-train_control <- trainControl(method = "cv", number = 5)  # 10-fold cross-validation
-
-# Defining a tuning grid for both gamma and lambda
-tune_grid <- expand.grid(gamma = 0, 
-                         lambda = 0.9)  
-
-# Training the regularized QDA model with cross-validation and tuning
-final_rda <- train(SalePrice_Category ~ ., data = data_enc, method = "rda", 
-                   trControl = train_control, tuneGrid = tune_grid)
-
-# Displaying the results
-print(final_rda$results)
-```
-
-We obtain around a 70% accuracy as expected.
-
-We now will train the Ordinal Logistic Regression model.
+To assess the ensemble's accuracy, we will do cross-validation and check its performance.
 
 ```{r}
 # For reproducibility purposes
@@ -1995,8 +1992,108 @@ for (i in seq_along(folds)) {
 # Overall cross-validated accuracy
 mean_cv_accuracy <- mean(cv_accuracies)
 print(mean_cv_accuracy)
-
 ```
+
+With cross-validation we obtained and accuracy of 73% in the ensemble which is the highest yet. Now we will finally train the ensemble on the whole training set.
+
+To check that the feature extraction we will train the algorithm selecting instead of 15, 25 numerical columns and observe their difference in accuracy.
+
+```{r}
+cat_features <- c("ExterQual", "FireplaceQu", "BsmtQual", "KitchenQual", "HouseStyle", "MSZoning", "Neighborhood", "BldgType", "GarageType", "SalePrice_Category")
+num_features <- final_scaled_data[, selected_num_features2]
+cat_features <- data_enc[, cat_features]
+new_data <- cbind(num_features, cat_features)
+
+# For reproducibility purposes
+set.seed(123) 
+
+# Define the mapping
+class_mapping <- c("Very.Low" = 1, "Low" = 2, "Medium" = 3, "High" = 4, "Very.High" = 5)
+
+# Function to convert class predictions to numeric values
+convert_to_numeric <- function(predictions) {
+  as.numeric(class_mapping[as.character(predictions)])
+}
+
+# Final hyperparameters for each model
+hyperparams_rda <- list(gamma = 0, lambda = 0.9)
+hyperparams_ksvm <- list(C = 2.5, sigma = 0.03)
+hyperparams_xgboost <- list(nrounds = 200, eta = 0.1, max_depth = 5, colsample_bytree = 0.8, gamma = 1, min_child_weight = 3, subsample = 0.8)
+
+# Create folds for cross-validation
+folds <- createFolds(new_data$SalePrice_Category, k = 5, returnTrain = TRUE)
+
+# Initialize vector to store accuracies
+cv_accuracies <- numeric(length(folds))
+
+for (i in seq_along(folds)) {
+  cat("Fold: ", i, " ")
+  
+  # Get train and test indices
+  train_indices <- folds[[i]]
+  test_indices <- setdiff(seq_along(new_data$SalePrice_Category), train_indices)
+  
+  # Split the data
+  train_data_cv <- new_data[train_indices, ]
+  test_data_cv <- new_data[test_indices, ]
+  
+  test_labels_cv <- test_data_cv$SalePrice_Category
+  test_data_cv <- test_data_cv[, -which(names(test_data_cv) == "SalePrice_Category")]
+  
+  cat("RDA ")
+  
+  # Train individual models on the training fold
+  final_rda_cv <- train(
+    SalePrice_Category ~ .,
+    data = train_data_cv,
+    method = "rda",
+    tuneGrid = expand.grid(hyperparams_rda)
+  )
+  
+  cat("KSVM ")
+  final_ksvm_cv <- train(
+    SalePrice_Category ~ .,
+    data = train_data_cv,
+    method = "svmRadial",
+    tuneGrid = expand.grid(hyperparams_ksvm)
+  )
+  
+  levels(train_data_cv$SalePrice_Category) <- make.names(levels(train_data_cv$SalePrice_Category))
+  
+  cat("XGBoost ")
+  
+  final_xgboost_cv <- train(
+    SalePrice_Category ~ ., 
+    data = train_data_cv,
+    method = "xgbTree",
+    tuneGrid = expand.grid(hyperparams_xgboost),
+    metric = "Accuracy"
+  )
+  
+  # Generate predictions on the test fold
+  pred_rda <- convert_to_numeric(predict(final_rda_cv, test_data_cv))
+  pred_ksvm <- convert_to_numeric(predict(final_ksvm_cv, test_data_cv))
+  pred_xgboost <- convert_to_numeric(predict(final_xgboost_cv, test_data_cv))
+  
+  # Calculate ensemble predictions (average and round)
+  average_prediction <- (pred_rda + pred_ksvm + pred_xgboost) / 3
+  final_numeric_pred <- round(average_prediction)
+  
+  # Convert back to class labels
+  final_class_pred <- names(class_mapping)[final_numeric_pred]
+
+  # Calculate accuracy for the fold
+  cv_accuracies[i] <- mean(as.factor(final_class_pred) == test_labels_cv)
+}
+
+# Overall cross-validated accuracy
+mean_cv_accuracy <- mean(cv_accuracies)
+print(mean_cv_accuracy)
+```
+
+After training we even see a slight drop in accuracy. Since they are mostly the same we can conclude that adding those new 10 features does not really have an impact on classification, and therefore the feature extraction has been successful, reducing the complexity of the problem.
+
+Now we will train the ensemble on the whole training data.
 
 ```{r}
 # For reproducibility purposes
@@ -2025,11 +2122,15 @@ final_xgboost <- train(
     tuneGrid = expand.grid(hyperparams_xgboost),
     metric = "Accuracy"
 )
+```
 
+Building the function to make predictions of the ensemble.
+
+```{r}
 # Function to generate ensemble predictions and evaluate performance
 ensemble_predict <- function(test_data) {
-  test_labels <- test_data[, 25]
-  test_data <- test_data[, -25]
+  test_labels <- test_data$SalePrice_Category
+  test_data <- test_data[, -which(names(test_data) == "SalePrice_Category")]
   
   # Generate predictions for each model
   pred_rda <- convert_to_numeric(predict(final_rda, test_data))
@@ -2052,15 +2153,16 @@ ensemble_predict <- function(test_data) {
   # Return both accuracy and confusion matrix
   return(list(accuracy = accuracy, confusion_matrix = cm))
 }
-
-# Example usage
-ensemble_predict(data_enc)
-
 ```
 
-The ensemble predict model returned an accuracy of 0.85. We will now create some graphs to interpret this model and obtain insights about the data.
+```{r}
+# Example usage
+ensemble_predict(data_enc)
+```
 
-### 4.3 Interpretation
+We will now create some graphs to interpret this model and obtain insights about the data.
+
+## 4.2 Interpretation
 
 We will first obtained the feature importance taking into account the feature importance from each of these models. This is obtained as the mean value each model returns for the features.
 
@@ -2101,106 +2203,223 @@ ggplot(top_features, aes(x = reorder(Feature, Ensemble), y = Ensemble)) +
 
 As seen with most of our previously trained models the models give a big importance to both Area and Quality which makes sense as they are two categories people take into account when buying houses.
 
-Moreover, BldgType and MSSubClass dont seem to have a really high significance as the rest of models.
+Moreover, BldgType and MSSubClass don't seem to have a really high significance as the rest of models. Based on this graph, we will make a partial dependence plot on Overall Qual as it is clearly the most important variable when classifying, to see how it affects each class.
 
-Based on this graph, we will make a partial dependence plot on Overall Qual as it is clearly the most important variable when classifying, to see how it affects each class.
+# 5. Testing
+
+To conclude with the project we will test the model on the testing set we saved at the start. For this, we have to make the same transformations we did earlier to this new data.
 
 ```{r}
-# Compute Partial Dependence for each model
-pdp_rda <- partial(
-  final_rda,
-  pred.var = "OverallQual",
-  train = data_enc,
-  grid.resolution = 20,
-  prob = TRUE
-)
+# 1. Removing the same columns
+na_columns <- c("Id", "Alley","PoolQC","Fence", "MiscFeature")
+testing <- testing[, !(colnames(testing) %in% na_columns)]
 
+# 2. Handling missing values
 
-pdp_xgboost <- partial(
-  final_xgboost,
-  pred.var = "OverallQual",
-  train = data_enc,
-  grid.resolution = 20,
-  prob = TRUE
-)
+## 2.1 Numerical data
+numeric_data_test <- select_if(testing, is.numeric)
+numeric_data_test <- numeric_data_test %>%
+  mutate(across(everything(), ~ ifelse(is.na(.), median(., na.rm = TRUE), .)))
 
-# Combine the Partial Dependence results into a single data frame
-ensemble_pd <- data.frame(
-  Overall_Qual = pdp_rda$OverallQual,  # Grid values (assumes same grid across models)
-  RDA = pdp_rda$yhat,
-  XGBoost = pdp_xgboost$yhat
-)
+## 2.2 Categorical data
+na_columns <- c("BsmtQual", "BsmtCond", "BsmtExposure", "BsmtFinType1","BsmtFinType2", "FireplaceQu", "GarageType", "GarageFinish", "GarageQual","GarageCond")
 
-# Compute the ensemble's averaged Partial Dependence
-ensemble_pd$Ensemble <- rowMeans(ensemble_pd[, c("RDA", "XGBoost")])
+categorical_data_test <- select_if(testing, is.character)
+categorical_data_test[na_columns][is.na(categorical_data_test[na_columns])] <- "None"
+imputed_categorical_data_test <- VIM::kNN(categorical_data_test, 
+                                          variable = c("MasVnrType", "Electrical"),
+                                          k = 10)
+categorical_data_test$MasVnrType <- imputed_categorical_data_test$MasVnrType
+categorical_data_test$Electrical <- imputed_categorical_data_test$Electrical
 
-# Plot the Ensemble PDP (single line)
-ggplot(ensemble_pd, aes(x = Overall_Qual, y = Ensemble)) +
-  geom_line(color = "steelblue", size = 1.2) +
-  labs(
-    title = "Partial Dependence Plot for Overall Quality (Ensemble)",
-    x = "Overall Quality",
-    y = "Predicted Probability"
-  ) +
-  theme_minimal()
+# 3. Handling problematic columns
+problematic_cols <- c("LowQualFinSF", "OpenPorchSF", "EnclosedPorch", "X3SsnPorch", "ScreenPorch")
+problematic_data_test <- numeric_data_test[, problematic_cols]
+new_numeric_data_test <- numeric_data_test[, !(names(numeric_data_test) %in% problematic_cols)]
 
+# 4. Scaling numeric data
+# Apply the saved bestNormalize transformations to the test set
+scaled_num_data_test <- as.data.frame(lapply(names(new_numeric_data_test), function(col) {
+  if (col %in% names(training_bestNormalize)) {
+    predict(training_bestNormalize[[col]], newdata = new_numeric_data_test[[col]])
+  } else {
+    stop(paste("No transformation found for column:", col))
+  }
+}))
+names(scaled_num_data_test) <- names(new_numeric_data_test)
+
+scaled_problematic_test <- as.data.frame(scale(problematic_data_test)) 
+
+final_scaled_data_test <- cbind(scaled_num_data_test, scaled_problematic_test)
+
+# 5. Feature selection
+reduced_test_data <- final_scaled_data_test[, selected_num_features]
+reduced_test_data$SalePrice <- final_scaled_data_test$SalePrice
+categorical_data_test <- categorical_data_test[, selected_cat_features]
+
+# 6. Encoding categorical columns
+
+## 6.1 Label encoding
+categorical_data_test$ExterQual <- as.integer(factor(categorical_data_test$ExterQual, levels = c("Po", "Fa", "TA", "Gd", "Ex")))
+categorical_data_test$FireplaceQu <- as.integer(factor(categorical_data_test$FireplaceQu, levels = c("None", "Po", "Fa", "TA", "Gd", "Ex")))
+categorical_data_test$BsmtQual <- as.integer(factor(categorical_data_test$BsmtQual, levels = c("None", "Fa", "TA", "Gd", "Ex")))
+categorical_data_test$KitchenQual <- as.integer(factor(categorical_data_test$KitchenQual, levels = c("Fa", "TA", "Gd", "Ex")))
+
+## 6.2 Target encoding
+categorical_columns <- c("HouseStyle", "MSZoning", "Neighborhood", "BldgType", "GarageType")
+for (col in categorical_columns) {
+    # Extract the tibble for the current column from training_target_means
+    target_map <- training_target_means[[col]]
+    
+    # Ensure the tibble has the expected structure (first column: category, second column: mean target)
+    if (nrow(target_map) == 0) {
+        warning(paste("Target map for column", col, "is empty. Skipping."))
+        next
+    }
+    
+    # Create a named vector where names are categories and values are mean targets
+    target_values <- target_map[[2]]  # Second column is the mean target
+    names(target_values) <- as.character(target_map[[1]])  # First column is the category name
+    
+    # Convert the test set column to character to ensure proper matching
+    categorical_data_test[[col]] <- as.character(categorical_data_test[[col]])
+    
+    # Perform the mapping using `match`
+    mapped_indices <- match(categorical_data_test[[col]], names(target_values))
+    mapped_values <- target_values[mapped_indices]
+    
+    # Replace any NA values (categories not found in training) with the fallback mean
+    fallback_mean <- mean(target_values, na.rm = TRUE)
+    mapped_values[is.na(mapped_values)] <- fallback_mean
+    
+    # Assign the mapped values back to the test set
+    categorical_data_test[[col]] <- mapped_values
+}
+categorical_data_test <- as.data.frame(scale(categorical_data_test))
+
+# 7. Category creation
+labels <- c("Very.Low", "Low", "Medium", "High", "Very.High")
+data_enc_test <- cbind(reduced_test_data, categorical_data_test)
+data_enc_test$SalePrice_Category <- cut(data_enc_test$SalePrice, 
+                                        breaks = training_saleprice_breaks, 
+                                        labels = labels, 
+                                        include.lowest = TRUE)
+
+# 8. Final dataset
+final_test_data <- data_enc_test[, -which(names(data_enc_test) == "SalePrice")]
+final_test_data <- na.omit(final_test_data)  # Drop rows with NA 
 ```
 
-The Y axis represents the Predicted Probability of the target variable Sale Price actually happening. The x axis shows the values of the Overall Quality which are between -2.5 and 5 (they have been scaled). This clearly shows a negative relation between both of these variables, the higher the Quality the lower the probability. When the slope seems to flatten which here happens close to 0 just shows that the feature is not as important for these values.
-
-# For reproducibility purposes
-
-set.seed(123)
-
-Creating the ROC curves based on the test
+With the test data being processed we can now make predictions with them.
 
 ```{r}
-# Function to calculate predicted probabilities for the training set
-ensemble_predict_probabilities_train <- function(train_data) {
-  train_labels <- train_data[, 25]  # Assuming labels are in column 25
-  train_data <- train_data[, -25]  # Exclude the label column for prediction
+ensemble_predict(final_test_data)
+```
+
+We finally obtain a \~72 % accuracy, which is really close to the one we estimated with cross validation. With this we can see that the model we obtained performs as expected and well on unseen data.
+
+## 5.1 Interpretation
+
+Next, we will compute the ROCs and the AUCs for the tesing data, to interpret and see how the model has performed.
+
+```{r}
+# Function to calculate predicted probabilities for the test set
+ensemble_predict_probabilities_train <- function(test_data) {
+  test_labels <- test_data$SalePrice_Category
+  test_data <- test_data[, -which(names(test_data) == "SalePrice_Category")]
   
   # Generate probability predictions for each model (RDA, SVM, XGBoost)
-  prob_rda <- predict(final_rda, train_data, type = "prob")
-  prob_xgboost <- predict(final_xgboost, train_data, type = "prob")
+  prob_rda <- predict(final_rda, test_data, type = "prob")
+  prob_xgboost <- predict(final_xgboost, test_data, type = "prob")
   
   # Calculate ensemble probabilities as the mean of probabilities from each model
   ensemble_probs <- (prob_rda + prob_xgboost) / 2
   
-  return(list(probs = ensemble_probs, labels = train_labels))
+  return(list(probs = ensemble_probs, labels = test_labels))
 }
 
-# Get ensemble probabilities and true labels for the training set
-ensemble_results_train <- ensemble_predict_probabilities_train(data_enc)
-ensemble_probs_train <- ensemble_results_train$probs
-true_labels_train <- ensemble_results_train$labels
+# Get ensemble probabilities and true labels for the test set
+ensemble_results_test <- ensemble_predict_probabilities_train(final_test_data)
+ensemble_probs_test <- ensemble_results_test$probs
+true_labels_test <- ensemble_results_test$labels
 
 # Create a list to store ROC curves for each class (One-vs-Rest)
-roc_list_ensemble_train <- list()
+roc_list_ensemble_test <- list()
 
 # Get the levels of the true labels (class names)
-class_levels_train <- levels(true_labels_train)
+class_levels_test <- levels(true_labels_test)
 
 # Calculate ROC curve for each class using One-vs-Rest approach
-for (i in 1:length(class_levels_train)) {
+for (i in 1:length(class_levels_test)) {
   # Treat the current class as positive (1) and all others as negative (0)
-  binary_true_labels <- ifelse(true_labels_train == class_levels_train[i], 1, 0)
+  binary_true_labels <- ifelse(true_labels_test == class_levels_test[i], 1, 0)
   
   # Calculate ROC curve for the current class
-  roc_list_ensemble_train[[i]] <- roc(binary_true_labels, ensemble_probs_train[, i], quiet = TRUE)
+  roc_list_ensemble_test[[i]] <- roc(binary_true_labels, ensemble_probs_test[, i], quiet = TRUE)
 }
 
 # Plot ROC curves using ggroc
-roc_plot_ensemble_train <- ggroc(roc_list_ensemble_train, aes = "color") +
+roc_plot_ensemble_test <- ggroc(roc_list_ensemble_test, aes = "color") +
   ggtitle("One-vs-Rest ROC Curves for Ensemble Model (Training Set)") +
   xlab("False Positive Rate") +
   ylab("True Positive Rate") +
   theme_minimal()
 
 # Print the ROC curves and the plot
-print(roc_list_ensemble_train)
-print(roc_plot_ensemble_train)
-
-
-
+print(roc_list_ensemble_test)
+print(roc_plot_ensemble_test)
 ```
+
+We obtain really high values for the AUC. We can also see that the model struggles the most with the middle classes especially, with the Medium class. Overall we observe that we have a really robust model that performs well on unseen data.
+
+Finally, we will make a local SHAP interpretation for an observation on the dataset. We can only use RDA and XGBoost, since SVM cannot output probabilities, as explained in its introduction.
+
+```{r}
+# Prediction wrapper
+pfun <- function(object, newdata) {
+  prob <- predict(object, newdata = newdata, type = "prob")
+  return(prob[1, "Very.High"])  # Selecting the probability for "Very.High"
+}
+
+# Training features
+X <- data_enc[, -which(names(data_enc) == "SalePrice_Category")]
+
+# Single observation
+house1 <- final_test_data[8, -which(names(final_test_data) == "SalePrice_Category")]
+
+# Compute SHAP values of XGBoost
+ex.house1.adj.xgboost <- fastshap::explain(
+  object = final_xgboost,
+  X = X,
+  pred_wrapper = pfun,
+  newdata = house1,
+  nsim = 50,
+  adjust = F
+)
+# Compute SHAP values of RDA
+ex.house1.adj.rda <- fastshap::explain(
+  object = final_rda,
+  X = X,
+  pred_wrapper = pfun,
+  newdata = house1,
+  nsim = 50,
+  adjust = F
+)
+
+# Averaging SHAP values
+ex.house1.adj <- (ex.house1.adj.xgboost + ex.house1.adj.rda)/2
+
+# Plotting the results
+shv <- shapviz(ex.house1.adj, 
+               X = house1)
+
+sv_waterfall(shv)
+```
+
+We see that for this observation, most features suggest that the category is "Very High", especially the quality and area ones. However, low quality in the fireplace, low overall conditions and other related variables drive the probability that the category is "Very High" back. In fact, this observation's true class was "Very High", meaning the model predicted well.
+
+# 6. Conclusions
+
+To conclude we performed each step required. Firstly preprocessed and analyzed the data, in which we did some feature selection, then we tried every algorithm focusing both on predicting and interpreting its results. With this knowledge we then built an ensemble with the best algorithms as our final model. We finally tested the model in unseen data and concluded that it performed well, as well as making interpretations about the model.
+
+Just as in the last project, we wanted to focus not only on the coding but also understanding as much as possible the algorithms we trained and the decisions we took. This meant diving deep in some mathematical concepts and explanations, but that way we felt confident in our choices.
