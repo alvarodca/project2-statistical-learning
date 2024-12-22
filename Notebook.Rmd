@@ -40,7 +40,7 @@ With a first visualization of the dataset we can see that 43 of the columns are 
 
 Before doing any other analysis or operations with the data we will split into training and testing sets. This is because we will treat the test data as "future" data, and looking at it during development could unintentionally bias the models.
 
-Furthermore, since the dataset is relatively small (\~1500 observations), we will reserve a 20% of data for testing The remaining 80% will be used for training, since we will also use cross-validation to evaluate any model. This ensures that we have sufficient data to have robust predictivions and evaluations.
+Furthermore, since the dataset is relatively small (\~1500 observations), we will reserve a 20% of data for testing The remaining 80% will be used for training, since we will also use cross-validation to evaluate any model. This ensures that we have sufficient data to have robust predictions and evaluations.
 
 ```{r}
 split <- createDataPartition(data$SalePrice, p = 0.8, list = FALSE)
@@ -736,16 +736,14 @@ print(cv_model)
 final_dt <- cv_model$finalModel
 ```
 
-We see a 57% accuracy, which is not bad but there is room for improvement. Also we obtain a 0.47 Kappa value, which indicates a moderate agreement between the model's predictions and true labels.
+We see a \~56% accuracy, which is not bad but there is room for improvement. Also we obtain a \~0.45 Kappa value, which indicates a moderate agreement between the model's predictions and true labels.
 
 ### 3.1.3 Interpretation
 
 Now, we can plot the decision tree so that we can understand how the predictions are done.
 
 ```{r}
-png("decision_tree.png", width = 3000, height = 2000, res = 300)  
 rpart.plot(final_dt, digits = 3)
-dev.off()  
 ```
 
 The first split done is by OverallQual, which measure the overall quality of the house, with this we can see that houses with a higher quality usually are pricier, as expected. In the right part of the tree, we observe another split by OverallQual, so it indicates that houses with a very high overall quality are the most expensive ones. Another split is by GrLivArea, which measures the above ground area of the house, meaning that bigger houses are more expensive, which also makes sense. Finally, it splits by GarageType, with the houses that have a garage attached to home being more expensive.
@@ -786,7 +784,7 @@ print(knn_model)
 
 ### 3.2.3 Interpretation
 
-We see that the optimal $k$, is 6 as it yields approximately a 66% accuracy and a kappa of 0.58. To visualize this model, we will train it on the whole dataset and perform PCA to visualize the classification in 2 dimensions.
+We see that the optimal $k$, is 6 as it yields approximately a \~65% accuracy and a kappa of \~0.56. To visualize this model, we will train it on the whole dataset and perform PCA to visualize the classification in 2 dimensions.
 
 ```{r}
 # For reproducibility purposes
@@ -824,7 +822,7 @@ We observe that most of the points in the class Very High have been classified c
 However we will plot the SHAP values to see if we can obtain more insights and see what values have more importance in our KNN model.
 
 ```{r}
-# Defining a prediction wrapper for probabilities (if required)
+# Defining a prediction wrapper for probabilities 
 predict_function <- function(model, newdata) {
   predict(model, newdata = newdata, type = "prob")
 }
@@ -861,7 +859,7 @@ ggplot(long_shap_knn, aes(x = value, y = feature)) +
   theme_minimal()
 ```
 
-The plot shows how each feature contributes to the model output. Wider distributions indicate more variability in feature impact. A violin with mean around 0 has almost no impact as its shap values are near zero. We can see that in this model MSZoning and Overall Condition have the lower SHAP values whereas Fireplaces and FireplaceQU seem to have more significance in this model.
+The plot shows how each feature contributes to the model output. Wider distributions indicate more variability in feature impact. A violin with mean around 0 has almost no impact as its shap values are near zero. We can see that in this model MSZoning and Overall Condition have the lower SHAP values whereas ExterQual has the most impact.
 
 ## 3.3 Quadratic Discriminant Analysis and Linear Discrimant Analysis
 
@@ -944,7 +942,7 @@ print(qda_model)
 
 ```
 
-We can see that the value obtained for accuracy is around 0.65 and around 0.55 for the kappa value which are somewhat decent values and better than doing it by random chance but we could improve this values for sure.
+We can see that the value obtained for accuracy is around 0.64 and around 0.55 for the kappa value which are somewhat decent values and better than doing it by random chance but we could improve this values for sure.
 
 We will now compare with LDA and then jump to conclusions.
 
@@ -997,7 +995,7 @@ lda_model <- train(SalePrice_Category ~ ., data = data_enc, method = "lda", trCo
 print(lda_model)
 ```
 
-The accuracy is of around 0.69 and a value of 0.61 for kappa which is an increase with respect to the previous result we obtained
+The accuracy is of around 0.69 and a value of \~0.62 for kappa which is an increase with respect to the previous result we obtained
 
 #### 3.3.2.3 Interpretation
 
@@ -1194,7 +1192,7 @@ nb_model <- train(SalePrice_Category ~ ., data = data_enc, method = "nb", trCont
 print(nb_model)
 ```
 
-We observe that the best model has a 65% accuracy and a Kappa of 0.56 which has been very common in different algorithms throughout this project. This can be due to many reasons, but again there are inherent problems with the model and our data.
+We observe that the best model has a \~66% accuracy and a Kappa of \~0.57 which has been very common in different algorithms throughout this project. This can be due to many reasons, but again there are inherent problems with the model and our data.
 
 Firstly, each class is assumed to be normally distributed, and although we have scaled and transformed the data, we could observe how the middle class is normally distributed while maybe the "Very High" class is skewed. Moreover, we also assume independence between each class which is not correct, since for example the overall quality (OverallQual) and exterior quality (ExterQual) are clearly related, we observed this in the correlation plots we did right at the start.
 
@@ -1342,7 +1340,7 @@ multinomial_model <- train(SalePrice_Category ~ ., data = data_not_enc, method =
 print(multinomial_model)
 ```
 
-In this output we see that the multinomial regression is regularized and it uses a decay to obtain better values. Same as seen on QDA, the regularization parameter prevents overfitting and fixes complexity. The accuracy obtained was of 0.69 and a kappa of 0.62 which is a good value and it is slightly better than the models we have seen until now.
+In this output we see that the multinomial regression is regularized and it uses a decay to obtain better values. Same as seen on QDA, the regularization parameter prevents overfitting and fixes complexity. The accuracy obtained was of \~0.69 and a kappa of \~0.62 which is a good value and it is slightly better than the models we have seen until now.
 
 We will know use Ordinal Logistic Regression, we will focus more on this model as at first hand it will return the best values
 
@@ -1384,11 +1382,11 @@ print(ordinal_model)
 
 We see that there are 5 different link models which use different methods and functions to determine the cumulative properties of the response variables. Each of these methods behave better depending on the distribution of data, in our case we expect Probit or Logit to be the best method as it assumes a normal distribution. However we see that all methods return really similar values which means they perform really well.
 
-As expected, we obtained a higher value than Multinomial regression, we obtained an accuracy of around 0.72 and a kappa of 0.66 which shows improvement from previous models.
+As expected, we obtained a higher value than Multinomial regression, we obtained an accuracy of around 0.72 and a kappa of \~0.66 which shows improvement from previous models.
 
 ### 3.5.3 Interpretation
 
-Following the same procedure as with other algorithms, we will now use PCA to obtain a rep
+Following the same procedure as with other algorithms, we will now use PCA to obtain a 2D plot of the classification made by the algorithm.
 
 ```{r}
 pca_data$Predicted_Class_olr <- predict(ordinal_model, newdata = data_enc)
@@ -1396,7 +1394,7 @@ pca_data$Predicted_Class_olr <- predict(ordinal_model, newdata = data_enc)
 # Visualize the PCA result with predicted class labels
 ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_olr, shape=SalePrice_Category)) +
   geom_point(alpha = 0.7, size = 3) +
-  labs(title = "RDA Predictions in 2D (PCA)", x = "Principal Component 1", y = "Principal Component 2") +
+  labs(title = "Ordinal Logistic Regression Predictions in 2D (PCA)", x = "Principal Component 1", y = "Principal Component 2") +
   theme_minimal() +
   scale_color_manual(values = rainbow(length(unique(pca_data$Predicted_Class_olr))))  # Customize colors for predicted classes
 ```
@@ -1488,7 +1486,7 @@ svm_linear_model <- train(SalePrice_Category ~ .,
 print(svm_linear_model)
 ```
 
-As we expected there is a higher accuracy (70%) and kappa (0.63) compared to the previous models. But we know this can be improved, the following way. Before we said that Linear SVM assumes the data is linearly separable but this is not always the case. To solve this, we use the Kernel SVM that augments the dimensionality of the data with a Kernel function in order to do non-linear classification. The kernel function we will use is Gaussian RBF, since is one of the most common and versatile ones. We will also perform a small hyper-parameter tuning to optimize the results further.
+As we expected there is a higher accuracy (\~70%) and kappa (\~0.63) compared to the previous models. But we know this can be improved, the following way. Before we said that Linear SVM assumes the data is linearly separable but this is not always the case. To solve this, we use the Kernel SVM that augments the dimensionality of the data with a Kernel function in order to do non-linear classification. The kernel function we will use is Gaussian RBF, since is one of the most common and versatile ones. We will also perform a small hyper-parameter tuning to optimize the results further.
 
 ```{r}
 # For reproducibility purposes
@@ -1508,7 +1506,7 @@ svm_kernel <- train(SalePrice_Category ~ .,
 print(svm_kernel)
 ```
 
-After this implementation of SVMs and the hyper-parameter tuning, we get a 73% accuracy and 0.66 kappa which is the highes yet for any model. This is a slight improvement over the Linear SVM model we trained before too.
+After this implementation of SVMs and the hyper-parameter tuning, we get a \~73% accuracy and \~0.66 kappa which is the highes yet for any model. This is a slight improvement over the Linear SVM model we trained before too.
 
 ### 3.6.3 Interpretation
 
@@ -1616,7 +1614,7 @@ pca_data$Predicted_Class_rf <- predict(rf_model, newdata = data_not_enc)
 # Visualize the PCA result with predicted class labels
 ggplot(pca_data, aes(x = PC1, y = PC2, color = Predicted_Class_rf, shape=SalePrice_Category)) +
   geom_point(alpha = 0.7, size = 3) +
-  labs(title = "RDA Predictions in 2D (PCA)", x = "Principal Component 1", y = "Principal Component 2") +
+  labs(title = "Random Forest Predictions in 2D (PCA)", x = "Principal Component 1", y = "Principal Component 2") +
   theme_minimal() +
   scale_color_manual(values = rainbow(length(unique(pca_data$Predicted_Class_rf))))  # Customize colors for predicted classes
 ```
@@ -1779,7 +1777,7 @@ print(gbm_model)
 cat("Best GBM Accuracy (Cross-Validation):", max(gbm_model$results$Accuracy), "\n")
 ```
 
-In the end we get a 69% accuracy, which is really similar to the first model. With this we observe that Gradient Boosting may not be the best approach for this model, since there are other models that perform slightly better such as SVM or Logistic Regression.
+In the end we get a \~69% accuracy, which is really similar to the first model. With this we observe that Gradient Boosting may not be the best approach for this model, since there are other models that perform slightly better such as SVM or Logistic Regression.
 
 So far, we have used Gradient Boosting for multiple-class classification, but one of the strongest points of this algorithm is regression, which we can use for this problem. Since we wanted to perfor a classification taks, in the preprocessing we divided the price of the houses into different categories. Therefore, if we fit the model for regression and obtain a value, we can then predict the class knowing the limits of the class (e.g. if the model predict a price of 75, and we know that the "High" class are all observation whose price ranges between 50 and 100, the final prediction of this model would be "High").
 
@@ -1994,7 +1992,7 @@ mean_cv_accuracy <- mean(cv_accuracies)
 print(mean_cv_accuracy)
 ```
 
-With cross-validation we obtained and accuracy of 73% in the ensemble which is the highest yet. Now we will finally train the ensemble on the whole training set.
+With cross-validation we obtained and accuracy of \~73% in the ensemble which is the highest yet. Now we will finally train the ensemble on the whole training set.
 
 To check that the feature extraction we will train the algorithm selecting instead of 15, 25 numerical columns and observe their difference in accuracy.
 
@@ -2201,9 +2199,7 @@ ggplot(top_features, aes(x = reorder(Feature, Ensemble), y = Ensemble)) +
 
 ```
 
-As seen with most of our previously trained models the models give a big importance to both Area and Quality which makes sense as they are two categories people take into account when buying houses.
-
-Moreover, BldgType and MSSubClass don't seem to have a really high significance as the rest of models. Based on this graph, we will make a partial dependence plot on Overall Qual as it is clearly the most important variable when classifying, to see how it affects each class.
+As seen with most of our previously trained models the models give a big importance to both Area and Quality which makes sense as they are two categories people take into account when buying houses. Moreover, BldgType and MSSubClass don't seem to have a really high significance as the rest of models.
 
 # 5. Testing
 
@@ -2320,7 +2316,7 @@ We finally obtain a \~72 % accuracy, which is really close to the one we estimat
 
 ## 5.1 Interpretation
 
-Next, we will compute the ROCs and the AUCs for the tesing data, to interpret and see how the model has performed.
+Next, we will compute the ROCs and the AUCs for the testing data, to interpret and see how the model has performed.
 
 ```{r}
 # Function to calculate predicted probabilities for the test set
@@ -2360,7 +2356,7 @@ for (i in 1:length(class_levels_test)) {
 
 # Plot ROC curves using ggroc
 roc_plot_ensemble_test <- ggroc(roc_list_ensemble_test, aes = "color") +
-  ggtitle("One-vs-Rest ROC Curves for Ensemble Model (Training Set)") +
+  ggtitle("One-vs-Rest ROC Curves for Ensemble Model (Test Set)") +
   xlab("False Positive Rate") +
   ylab("True Positive Rate") +
   theme_minimal()
@@ -2416,7 +2412,7 @@ shv <- shapviz(ex.house1.adj,
 sv_waterfall(shv)
 ```
 
-We see that for this observation, most features suggest that the category is "Very High", especially the quality and area ones. However, low quality in the fireplace, low overall conditions and other related variables drive the probability that the category is "Very High" back. In fact, this observation's true class was "Very High", meaning the model predicted well.
+We see that for this observation, most features suggest that the category is "Very High", especially the quality and some area ones. However, low 2nd floor area and other variables drive the probability that the category is "Very High" back. In fact, this observation's true class was "Very High", meaning the model predicted well.
 
 # 6. Conclusions
 
